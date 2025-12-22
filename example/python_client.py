@@ -117,7 +117,7 @@ def main():
     )
     print(f"   Status: {result['status']}")
     print(f"   OK: {result['ok']}\n")
-    
+
     # 4. 使用自定义JA3指纹
     print("4. 使用自定义JA3指纹:")
     result = client.fetch(
