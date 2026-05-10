@@ -9,7 +9,7 @@ from typing import Optional, Dict, Any
 
 class FastlsFetchClient:
     """Fastls Fetch客户端"""
-    
+
     def __init__(self, base_url: str = "http://localhost:8800"):
         """
         初始化Fetch客户端
@@ -19,26 +19,26 @@ class FastlsFetchClient:
         """
         self.base_url = base_url.rstrip('/')
         self.fetch_url = f"{self.base_url}/fetch"
-    
+
     def health(self) -> Dict[str, str]:
         """健康检查"""
         response = requests.get(f"{self.base_url}/health")
         response.raise_for_status()
         return response.json()
-    
+
     def fetch(
-        self,
-        url: str,
-        method: str = "GET",
-        headers: Optional[Dict[str, str]] = None,
-        body: str = "",
-        proxy: Optional[str] = None,
-        timeout: int = 30,
-        disable_redirect: bool = False,
-        user_agent: Optional[str] = None,
-        fingerprint: Optional[Dict[str, str]] = None,
-        browser: Optional[str] = None,
-        cookies: Optional[list] = None
+            self,
+            url: str,
+            method: str = "GET",
+            headers: Optional[Dict[str, str]] = None,
+            body: str = "",
+            proxy: Optional[str] = None,
+            timeout: int = 30,
+            disable_redirect: bool = False,
+            user_agent: Optional[str] = None,
+            fingerprint: Optional[Dict[str, str]] = None,
+            browser: Optional[str] = None,
+            cookies: Optional[list] = None
     ) -> Dict[str, Any]:
         """
         发送HTTP请求
@@ -63,7 +63,7 @@ class FastlsFetchClient:
             "url": url,
             "method": method,
         }
-        
+
         if headers:
             payload["headers"] = headers
         if body:
@@ -82,7 +82,7 @@ class FastlsFetchClient:
             payload["browser"] = browser
         if cookies:
             payload["cookies"] = cookies
-        
+
         response = requests.post(
             self.fetch_url,
             json=payload,
@@ -96,27 +96,32 @@ def main():
     """示例用法"""
     # 创建客户端
     client = FastlsFetchClient("http://localhost:8800")
-    
+
     # 1. 健康检查
     print("1. 健康检查:")
     health = client.health()
     print(f"   {health}\n")
-    
+
     # 2. 简单GET请求
     print("2. 简单GET请求:")
-    result = client.fetch("https://tls.peet.ws/api/all")
+    result = client.fetch(
+        "https://tls.peet.ws/api/all",
+        proxy="http://127.0.0.1:10809"
+    )
     print(f"   Status: {result['status']}")
     print(f"   OK: {result['ok']}")
-    print(f"   Body length: {len(result['body'])} bytes\n")
-    
+    print(result['body'])
+
     # 3. 使用浏览器指纹
     print("3. 使用Chrome142指纹:")
     result = client.fetch(
         "https://tls.peet.ws/api/all",
-        browser="chrome142"
+        browser="chrome144",
+        proxy="http://127.0.0.1:10809"
     )
     print(f"   Status: {result['status']}")
     print(f"   OK: {result['ok']}\n")
+    print(result['body'])
 
     # 4. 使用自定义JA3指纹
     print("4. 使用自定义JA3指纹:")
@@ -129,7 +134,7 @@ def main():
     )
     print(f"   Status: {result['status']}")
     print(f"   OK: {result['ok']}\n")
-    
+
     # 5. POST请求
     print("5. POST请求:")
     result = client.fetch(
@@ -140,7 +145,7 @@ def main():
     )
     print(f"   Status: {result['status']}")
     print(f"   OK: {result['ok']}\n")
-    
+
     # 6. 带自定义请求头
     print("6. 带自定义请求头:")
     result = client.fetch(
@@ -156,4 +161,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
