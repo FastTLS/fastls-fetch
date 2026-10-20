@@ -1,0 +1,37 @@
+package main
+
+import "fmt"
+
+func printHelp() {
+	fmt.Printf("Fastls Fetch Service - HTTP 请求服务\n\n")
+	fmt.Printf("用法:\n")
+	fmt.Printf("  fastls-fetch [选项]\n\n")
+	fmt.Printf("选项:\n")
+	fmt.Printf("  -addr, -a string\n")
+	fmt.Printf("        监听地址 (默认: \":8800\")\n")
+	fmt.Printf("        示例: -addr \":8800\" 或 -a \"0.0.0.0:8800\"\n\n")
+	fmt.Printf("  -debug, -d\n")
+	fmt.Printf("        启用 Debug 模式，显示详细的调试日志\n\n")
+	fmt.Printf("  -version, -v\n")
+	fmt.Printf("        显示版本信息并退出\n\n")
+	fmt.Printf("  -help, -h\n")
+	fmt.Printf("        显示此帮助信息并退出\n\n")
+	fmt.Printf("API 端点:\n")
+	fmt.Printf("  POST /fetch      - 发送 HTTP 请求\n")
+	fmt.Printf("  GET  /health     - 健康检查\n\n")
+	fmt.Printf("请求头配置 (X-Mitm-*):\n")
+	fmt.Printf("  可以通过请求头动态指定指纹配置，优先级高于请求体配置:\n")
+	fmt.Printf("  X-Mitm-Browser:     浏览器类型 (chrome/chrome160(latest), chrome150..chrome160, chrome120, chrome142, chromium, edge/edge160(latest), edge150..edge160, firefox/firefox158(latest), firefox151..firefox158, firefox144/147/148, safari, opera)\n")
+	fmt.Printf("  X-Mitm-Ja3:         JA3指纹字符串\n")
+	fmt.Printf("  X-Mitm-Ja4r:        JA4R指纹字符串\n")
+	fmt.Printf("  X-Mitm-H2Settings:  HTTP/2设置字符串 (格式: SETTINGS|ConnectionFlow|HeaderPriority|SettingsOrder)\n")
+	fmt.Printf("  X-Mitm-Proxy:       上级代理地址 (格式: http://proxy.com:8080 或 http://user:pass@proxy.com:8080)\n\n")
+	fmt.Printf("示例:\n")
+	fmt.Printf("  fastls-fetch -addr :8800\n")
+	fmt.Printf("  fastls-fetch -a :8800 -d\n")
+	fmt.Printf("  fastls-fetch -version\n")
+	fmt.Printf("  fastls-fetch -v\n")
+	fmt.Printf("  fastls-fetch -help\n")
+	fmt.Printf("  fastls-fetch -h\n\n")
+	fmt.Printf("更多信息请访问: https://github.com/FastTLS/fastls\n")
+}

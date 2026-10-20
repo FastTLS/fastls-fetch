@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	fastls "github.com/FastTLS/fastls"
-	"github.com/FastTLS/fastls/imitate"
 	"github.com/gin-gonic/gin"
 )
 
@@ -25,7 +24,7 @@ type FetchRequest struct {
 	DisableRedirect bool              `json:"disableRedirect"`
 	UserAgent       string            `json:"userAgent"`
 	Fingerprint     map[string]string `json:"fingerprint"` // {"type": "ja3", "value": "..."} 或 {"type": "ja4r", "value": "..."}
-	Browser         string            `json:"browser"`     // 浏览器类型: "chrome", "chrome120", "chrome142", "chromium", "edge", "firefox"(latest), "firefox144", "firefox147", "firefox151", "safari", "opera"
+	Browser         string            `json:"browser"`     // chrome/chrome160, chrome150..160, chrome120/142, edge/edge160, edge150..160, firefox/firefox158, firefox151..158, safari, opera
 	Cookies         []fastls.Cookie   `json:"cookies"`
 }
 
@@ -205,50 +204,16 @@ func handleFetch(c *gin.Context, client fastls.Fastls) {
 
 		// 如果没有指定指纹，根据浏览器类型设置指纹
 		if (options.Fingerprint == nil || options.Fingerprint.IsEmpty()) && req.Browser != "" {
-			switch req.Browser {
-			case "chrome":
-				imitate.Chrome(&options)
-			case "chrome120":
-				imitate.Chrome120(&options)
-			case "chrome142":
-				imitate.Chrome142(&options)
-			case "chromium":
-				imitate.Chromium(&options)
-			case "edge":
-				imitate.Edge(&options)
-			case "firefox":
-				imitate.Firefox(&options)
-			case "firefox144":
-				imitate.Firefox144(&options)
-			case "firefox147":
-				imitate.Firefox147(&options)
-			case "firefox151":
-				imitate.Firefox(&options)
-			case "safari":
-				imitate.Safari(&options)
-			case "opera":
-				imitate.Opera(&options)
-			default:
-				imitate.Firefox(&options)
-			}
-
-			// 如果设置了 Browser，使用 imitate 设置的 UserAgent（覆盖用户的 UserAgent）
-			if options.UserAgent != "" {
-				options.Headers["User-Agent"] = options.UserAgent
-			}
+			applyBrowserImitate(&options, req.Browser)
 		} else if req.UserAgent != "" {
 			// 如果没有设置 Browser，使用用户提供的 UserAgent
 			options.UserAgent = req.UserAgent
 			options.Headers["User-Agent"] = req.UserAgent
 		}
 
-		// 如果既没有指定指纹也没有指定浏览器，使用默认 Firefox148 指纹
+		// 如果既没有指定指纹也没有指定浏览器，使用默认最新 Firefox
 		if options.Fingerprint == nil || options.Fingerprint.IsEmpty() {
-			imitate.Firefox147(&options)
-			// 使用 imitate 设置的 UserAgent
-			if options.UserAgent != "" {
-				options.Headers["User-Agent"] = options.UserAgent
-			}
+			applyBrowserImitate(&options, "firefox")
 		}
 	}
 	// 执行请求

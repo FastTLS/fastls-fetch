@@ -62,7 +62,7 @@ print(response.json())
 | disableRedirect | bool | 否 | 是否禁用重定向 |
 | userAgent | string | 否 | 自定义User-Agent |
 | fingerprint | object | 否 | 指纹配置，格式：`{"type": "ja3", "value": "..."}` 或 `{"type": "ja4r", "value": "..."}` |
-| browser | string | 否 | 浏览器类型：`chrome`, `chrome120`, `chrome142`, `chromium`, `edge`, `firefox`, `safari`, `opera` |
+| browser | string | 否 | 浏览器类型：`chrome`/`chrome160`(最新), `chrome150`…`chrome160`, `chrome120`, `chrome142`, `chromium`, `edge`/`edge160`, `edge150`…`edge160`, `firefox`/`firefox158`, `firefox151`…`firefox158`, `safari`, `opera` |
 | cookies | array | 否 | Cookie数组 |
 
 **注意：** 指纹设置的优先级：`fingerprint` > `browser` > 默认Firefox。如果同时指定了`fingerprint`和`browser`，将优先使用`fingerprint`。
@@ -182,7 +182,7 @@ curl -X POST http://localhost:8800/fetch \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://tls.peet.ws/api/all",
-    "browser": "chrome142"
+    "browser": "chrome160"
   }'
 ```
 
@@ -192,7 +192,7 @@ import requests
 
 payload = {
     "url": "https://tls.peet.ws/api/all",
-    "browser": "chrome142"  # 可选: chrome, chrome120, chrome142, chromium, edge, firefox, safari, opera
+    "browser": "chrome160"  # 可选: chrome/chrome160, chrome150..160, edge/edge160, firefox/firefox158, firefox151..158 等
 }
 
 response = requests.post("http://localhost:8800/fetch", json=payload)
@@ -371,14 +371,16 @@ print(response.json())  # {"status": "ok"}
 
 | 浏览器类型 | 说明 |
 |-----------|------|
-| `chrome` | Chrome浏览器 |
-| `chrome120` | Chrome 120版本 |
-| `chrome142` | Chrome 142版本 |
-| `chromium` | Chromium浏览器 |
-| `edge` | Microsoft Edge浏览器 |
-| `firefox` | Firefox浏览器（默认） |
-| `safari` | Safari浏览器 |
-| `opera` | Opera浏览器 |
+| `chrome` / `chrome160` | Chrome 160（最新；TLS 为 Chrome150 基线） |
+| `chrome150` … `chrome160` | 按版本生成 UA / Sec-CH-UA |
+| `chrome120` / `chrome142` | 历史固定指纹 |
+| `chromium` | 裸 Chromium（最新主版本头） |
+| `edge` / `edge160` | Edge 160（最新） |
+| `edge150` … `edge160` | 按版本生成 Edge UA / Sec-CH-UA |
+| `firefox` / `firefox158` | Firefox 158（默认最新） |
+| `firefox151` … `firefox158` | Firefox 版本号支持 |
+| `safari` | Safari |
+| `opera` | Opera |
 
 ## 指纹设置优先级
 

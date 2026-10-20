@@ -55,7 +55,7 @@ curl -X POST http://localhost:8800/fetch \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://tls.peet.ws/api/all",
-    "browser": "chrome142"
+    "browser": "chrome150"
   }'
 ```
 
@@ -86,7 +86,7 @@ import requests
 
 payload = {
     "url": "https://tls.peet.ws/api/all",
-    "browser": "chrome142"
+    "browser": "chrome150"
 }
 
 response = requests.post("http://localhost:8800/fetch", json=payload)
@@ -107,7 +107,7 @@ import (
 func main() {
     payload := map[string]interface{}{
         "url":     "https://tls.peet.ws/api/all",
-        "browser": "chrome142",
+        "browser": "chrome150",
     }
     
     jsonData, _ := json.Marshal(payload)
@@ -123,7 +123,7 @@ const http = require('http');
 
 const data = JSON.stringify({
     url: 'https://tls.peet.ws/api/all',
-    browser: 'chrome142'
+    browser: 'chrome150'
 });
 
 const options = {
