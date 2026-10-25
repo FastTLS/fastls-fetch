@@ -29,6 +29,8 @@ go tool cover -func=coverage.out
 
 服务生命周期变更必须验证 context 取消、监听器关闭以及活动请求在超时窗口内完成后才退出。测试只监听环回地址。
 
+HTTP 入口变更必须覆盖 CORS 预检、凭据请求的显式来源响应以及 4 MiB 请求体边界。不得恢复 `Access-Control-Allow-Origin: *` 与凭据同时启用的无效组合。
+
 ## CI 门禁
 
 `.github/workflows/ci.yml` 包含三组门禁：

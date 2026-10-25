@@ -70,7 +70,7 @@ print(response.json())
 
 **注意：** 指纹设置的优先级：`fingerprint` > `browser` > 默认Firefox。如果同时指定了`fingerprint`和`browser`，将优先使用`fingerprint`。
 
-代理优先级为：HTTP 控制头 `X-Mitm-Proxy` > 请求体 `parent_proxy` > 请求体 `proxy`。指纹控制头存在时，整组控制头配置优先于请求体指纹配置。`fingerprint` 必须同时包含 `type` 和 `value`，不支持的类型以及无效的 HTTP/2 设置会直接返回 `400`。
+代理优先级为：HTTP 控制头 `X-Mitm-Proxy` > 请求体 `parent_proxy` > 请求体 `proxy`。指纹控制头存在时，整组控制头配置优先于请求体指纹配置。`fingerprint` 必须同时包含 `type` 和 `value`，不支持的类型以及无效的 HTTP/2 设置会直接返回 `400`。完整 JSON 请求体上限为 4 MiB，超过时返回 HTTP `413`；CORS 预检允许全部 `X-Mitm-*` 控制头。
 
 #### 响应格式
 

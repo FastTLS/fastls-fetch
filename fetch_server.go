@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -19,7 +20,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const shutdownTimeout = 5 * time.Second
+const (
+	shutdownTimeout    = 5 * time.Second
+	maxRequestBodySize = 4 << 20
+)
 
 // FetchRequest 请求结构体
 type FetchRequest struct {
@@ -116,6 +120,7 @@ func main() {
 
 func newFetchRouter(client fastls.Fastls) *gin.Engine {
 	r := gin.Default()
+	r.Use(requestBodyLimit(maxRequestBodySize))
 	r.Use(corsMiddleware())
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -170,6 +175,14 @@ func handleFetch(c *gin.Context, client fastls.Fastls) {
 
 	// 绑定JSON请求体
 	if err := c.ShouldBindJSON(&req); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			c.JSON(http.StatusRequestEntityTooLarge, FetchResponse{
+				OK:    false,
+				Error: fmt.Sprintf("请求体超过 %d 字节限制", maxBytesError.Limit),
+			})
+			return
+		}
 		c.JSON(http.StatusBadRequest, FetchResponse{
 			OK:    false,
 			Error: "请求参数错误: " + err.Error(),
@@ -357,15 +370,32 @@ func handleFetch(c *gin.Context, client fastls.Fastls) {
 	})
 }
 
+func requestBodyLimit(limit int64) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.Request.Body != nil {
+			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, limit)
+		}
+		c.Next()
+	}
+}
+
 // corsMiddleware CORS中间件
 func corsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
+		origin := c.GetHeader("Origin")
+		if origin == "" {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		} else {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+			c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+			c.Writer.Header().Add("Vary", "Origin")
+		}
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Accept, Origin, Cache-Control, X-Requested-With, X-Mitm-Browser, X-Mitm-Ja3, X-Mitm-Ja4r, X-Mitm-H2Settings, X-Mitm-Proxy")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
 
 		if c.Request.Method == "OPTIONS" {
+			c.Writer.Header().Add("Vary", "Access-Control-Request-Method")
+			c.Writer.Header().Add("Vary", "Access-Control-Request-Headers")
 			c.AbortWithStatus(http.StatusNoContent)
 			return
 		}
