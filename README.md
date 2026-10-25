@@ -11,6 +11,7 @@
 - 浏览器预设、JA3、JA4R 指纹配置
 - 请求级代理、重定向、超时、Cookie 和 User-Agent 控制
 - 自动响应解压和 CORS
+- SIGINT/SIGTERM 安全停止，给活动 HTTP 请求最多 5 秒完成，超时后强制关闭
 - 基于 `fastls` + `ftransport` 的独立依赖链，不再依赖 `fhttp`
 
 ## 环境要求
