@@ -162,7 +162,10 @@ func handleFetch(c *gin.Context, client fastls.Fastls) {
 
 	// 优先使用请求头中的指纹配置
 	if requestConfig != nil && requestConfig.Override {
-		applyImitateConfig(&options, requestConfig)
+		if err := applyImitateConfig(&options, requestConfig); err != nil {
+			c.JSON(http.StatusBadRequest, FetchResponse{OK: false, Error: "浏览器指纹配置错误: " + err.Error()})
+			return
+		}
 
 		// 优先使用请求头中的 HTTP2SettingsString，如果存在则覆盖
 		if requestConfig.HTTP2SettingsString != "" {
@@ -204,7 +207,10 @@ func handleFetch(c *gin.Context, client fastls.Fastls) {
 
 		// 如果没有指定指纹，根据浏览器类型设置指纹
 		if (options.Fingerprint == nil || options.Fingerprint.IsEmpty()) && req.Browser != "" {
-			applyBrowserImitate(&options, req.Browser)
+			if err := applyBrowserImitate(&options, req.Browser); err != nil {
+				c.JSON(http.StatusBadRequest, FetchResponse{OK: false, Error: "浏览器指纹配置错误: " + err.Error()})
+				return
+			}
 		} else if req.UserAgent != "" {
 			// 如果没有设置 Browser，使用用户提供的 UserAgent
 			options.UserAgent = req.UserAgent
@@ -213,7 +219,10 @@ func handleFetch(c *gin.Context, client fastls.Fastls) {
 
 		// 如果既没有指定指纹也没有指定浏览器，使用默认最新 Firefox
 		if options.Fingerprint == nil || options.Fingerprint.IsEmpty() {
-			applyBrowserImitate(&options, "firefox")
+			if err := applyBrowserImitate(&options, "firefox"); err != nil {
+				c.JSON(http.StatusInternalServerError, FetchResponse{OK: false, Error: "默认浏览器指纹不可用: " + err.Error()})
+				return
+			}
 		}
 	}
 	// 执行请求

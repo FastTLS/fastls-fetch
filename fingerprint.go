@@ -8,8 +8,11 @@ import (
 	"strings"
 
 	fastls "github.com/FastTLS/fastls"
-	"github.com/FastTLS/fastls/imitate"
+	fastlsimitate "github.com/FastTLS/fastls/imitate"
+	generators "github.com/FastTLS/imitate"
 )
+
+var fingerprintProvider = generators.New()
 
 type RequestFingerprintConfig struct {
 	Browser             string
@@ -68,7 +71,7 @@ func parseProxyFromHeaders(headers http.Header) (*url.URL, error) {
 }
 
 // applyImitateConfig 应用指纹配置到 options
-func applyImitateConfig(options *fastls.Options, requestConfig *RequestFingerprintConfig) {
+func applyImitateConfig(options *fastls.Options, requestConfig *RequestFingerprintConfig) error {
 	if requestConfig != nil && requestConfig.Override {
 		fingerprintCount := 0
 		if requestConfig.JA3 != "" {
@@ -87,40 +90,39 @@ func applyImitateConfig(options *fastls.Options, requestConfig *RequestFingerpri
 			options.Fingerprint = fastls.Ja3Fingerprint{
 				FingerprintValue: requestConfig.JA3,
 			}
-			return
+			return nil
 		}
 
 		if requestConfig.JA4R != "" {
 			options.Fingerprint = fastls.Ja4Fingerprint{
 				FingerprintValue: requestConfig.JA4R,
 			}
-			return
+			return nil
 		}
 
 		if requestConfig.Browser != "" {
-			applyBrowserImitate(options, requestConfig.Browser)
-			return
+			return applyBrowserImitate(options, requestConfig.Browser)
 		}
 	}
-}
-
-func finishBrowserUA(options *fastls.Options) {
-	if options.UserAgent != "" {
-		options.Headers["User-Agent"] = options.UserAgent
-	}
+	return nil
 }
 
 // applyBrowserImitate 按浏览器类型应用 imitate 指纹
-func applyBrowserImitate(options *fastls.Options, browserType string) {
+func applyBrowserImitate(options *fastls.Options, browserType string) error {
+	selector := browserSelector(browserType)
+	_, err := fastlsimitate.Use(options, selector, fastlsimitate.WithProvider(fingerprintProvider))
+	return err
+}
+
+func browserSelector(browserType string) string {
 	browserType = strings.ToLower(strings.TrimSpace(browserType))
+	selector := "firefox/158/windows"
 
 	// firefox151–firefox158
 	if strings.HasPrefix(browserType, "firefox") && browserType != "firefox" {
 		if verStr := strings.TrimPrefix(browserType, "firefox"); verStr != "" {
-			if major, err := strconv.Atoi(verStr); err == nil && major >= 151 && major <= 158 {
-				imitate.FirefoxVersion(options, major)
-				finishBrowserUA(options)
-				return
+			if major, err := strconv.Atoi(verStr); err == nil && (major >= 151 && major <= 158 || major == 144 || major == 147 || major == 148) {
+				selector = fmt.Sprintf("firefox/%d/windows", major)
 			}
 		}
 	}
@@ -129,20 +131,8 @@ func applyBrowserImitate(options *fastls.Options, browserType string) {
 	if strings.HasPrefix(browserType, "chrome") && browserType != "chrome" && browserType != "chromium" {
 		if verStr := strings.TrimPrefix(browserType, "chrome"); verStr != "" {
 			if major, err := strconv.Atoi(verStr); err == nil {
-				switch major {
-				case 120:
-					imitate.Chrome120(options)
-					finishBrowserUA(options)
-					return
-				case 142:
-					imitate.Chrome142(options)
-					finishBrowserUA(options)
-					return
-				}
-				if major >= imitate.ChromiumVersionMin && major <= imitate.ChromiumVersionMax {
-					imitate.ChromeVersion(options, major)
-					finishBrowserUA(options)
-					return
+				if major == 120 || major == 142 || major >= 150 && major <= 160 {
+					selector = fmt.Sprintf("chrome/%d/windows", major)
 				}
 			}
 		}
@@ -152,39 +142,35 @@ func applyBrowserImitate(options *fastls.Options, browserType string) {
 	if strings.HasPrefix(browserType, "edge") && browserType != "edge" {
 		if verStr := strings.TrimPrefix(browserType, "edge"); verStr != "" {
 			if major, err := strconv.Atoi(verStr); err == nil &&
-				major >= imitate.ChromiumVersionMin && major <= imitate.ChromiumVersionMax {
-				imitate.EdgeVersion(options, major)
-				finishBrowserUA(options)
-				return
+				major >= 150 && major <= 160 {
+				selector = fmt.Sprintf("edge/%d/windows", major)
 			}
 		}
 	}
 
 	switch browserType {
 	case "chrome":
-		imitate.Chrome(options)
+		selector = "chrome/160/windows"
 	case "chrome120":
-		imitate.Chrome120(options)
+		selector = "chrome/120/windows"
 	case "chrome142":
-		imitate.Chrome142(options)
+		selector = "chrome/142/windows"
 	case "chromium":
-		imitate.Chromium(options)
+		selector = "chromium/160/windows"
 	case "edge":
-		imitate.Edge(options)
+		selector = "edge/160/windows"
 	case "firefox":
-		imitate.Firefox158(options)
+		selector = "firefox/158/windows"
 	case "firefox144":
-		imitate.Firefox144(options)
+		selector = "firefox/144/windows"
 	case "firefox147":
-		imitate.Firefox147(options)
+		selector = "firefox/147/windows"
 	case "firefox148":
-		imitate.Firefox148(options)
+		selector = "firefox/148/windows"
 	case "safari":
-		imitate.Safari(options)
+		selector = "safari/18.7.3/ipados"
 	case "opera":
-		imitate.Opera(options)
-	default:
-		imitate.Firefox158(options)
+		selector = "opera/145/windows"
 	}
-	finishBrowserUA(options)
+	return selector
 }
