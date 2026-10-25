@@ -3,8 +3,9 @@
 ## 启动服务
 
 ```bash
-cd services/fastls-fetch
-go run fetch_server.go
+git clone https://github.com/FastTLS/fastls-fetch.git
+cd fastls-fetch
+go run .
 ```
 
 服务默认运行在 `http://localhost:8800`
