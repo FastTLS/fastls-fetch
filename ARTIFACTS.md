@@ -1,14 +1,14 @@
-# 开发产物与来源证明
+# 发布产物与来源证明
 
 ## 范围
 
-`Development artifacts` 工作流只为测试和联调提供临时构建。它在 `main` 更新或手动触发时运行，不创建 tag、GitHub Release 或正式版本。Actions 产物保留 14 天。
+`Development artifacts` 工作流在 `main` 更新或手动触发时提供保留 14 天的联调构建；向 GitHub 推送 `v*` 标签时，同一工作流在全部校验通过后创建正式 GitHub Release。不会向 GitHub 以外的软件包或镜像仓库发布。
 
-每次运行生成 Linux、Windows、macOS 的 amd64/arm64 包。归档名包含 `dev-<commit前12位>`，包内包含可执行文件和 `BUILD_INFO.txt`。
+每次运行生成 Linux、Windows、macOS 的 amd64/arm64 包。开发归档名包含 `dev-<commit前12位>`，正式归档名包含版本标签；包内包含可执行文件和 `BUILD_INFO.txt`。
 
 ## 下载
 
-从仓库的 Actions 页面打开对应运行并下载 `fastls-fetch-development-<完整提交SHA>`，或使用 GitHub CLI：
+正式版本从仓库的 GitHub Releases 页面下载。开发版本可从 Actions 页面下载 `fastls-fetch-development-<完整提交SHA>`，或使用 GitHub CLI：
 
 ```bash
 gh run list --repo FastTLS/fastls-fetch --workflow development-artifacts.yml
@@ -40,7 +40,7 @@ gh attestation verify fastls-fetch-dev-COMMIT-linux-amd64.tar.gz \
   --signer-workflow FastTLS/fastls-fetch/.github/workflows/development-artifacts.yml
 ```
 
-验证成功表示归档摘要与 GitHub 保存的签名证明一致，并且签发者是本仓库指定工作流。它不代表该构建已成为正式版本。
+验证成功表示归档摘要与 GitHub 保存的签名证明一致，并且签发者是本仓库指定工作流；只有位于正式 GitHub Release 且版本标签匹配的产物才是正式版本。
 
 ## 使用随包证明验证
 

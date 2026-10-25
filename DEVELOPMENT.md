@@ -45,7 +45,7 @@ HTTP 入口变更必须覆盖 CORS 预检、凭据请求的显式来源响应以
 
 ## 开发产物
 
-合入 `main` 或手动运行 `Development artifacts` 后，工作流会再次验证源码，再交叉构建、计算校验和、签发来源证明并自验证。它不创建标签或 Release。格式、下载及验证步骤见 [ARTIFACTS.md](./ARTIFACTS.md)。
+合入 `main` 或手动运行 `Development artifacts` 后，工作流会生成临时开发产物。推送受审的 `v*` 标签时，同一流程在校验、交叉构建、计算摘要、签发和自验证全部成功后创建 GitHub Release；不得复用该标签向其他渠道发布。格式、下载及验证步骤见 [ARTIFACTS.md](./ARTIFACTS.md)。
 
 ## 变更约定
 
