@@ -57,6 +57,7 @@ print(response.json())
 | url | string | 是 | 请求的URL地址 |
 | method | string | 否 | HTTP方法，默认为GET |
 | headers | object | 否 | 请求头，键值对格式 |
+| trailers | object | 否 | 请求 Trailer，字段值为字符串数组 |
 | body | string | 否 | 请求体（字符串格式） |
 | proxy | string | 否 | 代理地址，格式：http://host:port 或 socks5://host:port |
 | parent_proxy | string | 否 | 上级代理地址；设置后覆盖 `proxy` |
@@ -78,9 +79,14 @@ print(response.json())
 {
   "ok": true,
   "status": 200,
+  "protocol": "HTTP/2.0",
+  "final_url": "https://example.com/final",
   "headers": {
     "Content-Type": "application/json",
     "Content-Length": "1234"
+  },
+  "trailers": {
+    "X-Checksum": ["verified"]
   },
   "body": "响应体内容（已自动解码）",
   "error": ""
@@ -93,7 +99,10 @@ print(response.json())
 |------|------|------|
 | ok | bool | 请求是否成功 |
 | status | int | HTTP状态码 |
+| protocol | string | 最终响应使用的HTTP协议 |
+| final_url | string | 重定向后的最终URL |
 | headers | object | 响应头 |
+| trailers | object | 响应体读完后的多值Trailer |
 | body | string | 响应体（已自动解码gzip、br、deflate等压缩格式） |
 | error | string | 错误信息（如果ok为false） |
 

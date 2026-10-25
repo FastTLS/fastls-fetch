@@ -30,6 +30,7 @@ type FetchRequest struct {
 	URL                 string            `json:"url" binding:"required"`
 	Method              string            `json:"method"`
 	Headers             map[string]string `json:"headers"`
+	Trailers            http.Header       `json:"trailers,omitempty"`
 	Body                string            `json:"body"`
 	Proxy               string            `json:"proxy"`
 	Timeout             int               `json:"timeout"`
@@ -44,11 +45,14 @@ type FetchRequest struct {
 
 // FetchResponse 响应结构体
 type FetchResponse struct {
-	OK      bool              `json:"ok"`
-	Status  int               `json:"status"`
-	Headers map[string]string `json:"headers"`
-	Body    string            `json:"body"`
-	Error   string            `json:"error,omitempty"`
+	OK       bool              `json:"ok"`
+	Status   int               `json:"status"`
+	Protocol string            `json:"protocol,omitempty"`
+	FinalURL string            `json:"final_url,omitempty"`
+	Headers  map[string]string `json:"headers"`
+	Trailers http.Header       `json:"trailers,omitempty"`
+	Body     string            `json:"body"`
+	Error    string            `json:"error,omitempty"`
 }
 
 func main() {
@@ -209,6 +213,7 @@ func handleFetch(c *gin.Context, client fastls.Fastls) {
 	options := fastls.Options{
 		Headers:         make(map[string]string),
 		Body:            req.Body,
+		Trailers:        req.Trailers,
 		Proxy:           req.Proxy,
 		Timeout:         req.Timeout,
 		DisableRedirect: req.DisableRedirect,
@@ -323,9 +328,11 @@ func handleFetch(c *gin.Context, client fastls.Fastls) {
 			resp.Body.Close()
 		}
 		c.JSON(http.StatusOK, FetchResponse{
-			OK:     false,
-			Status: status,
-			Error:  err.Error(),
+			OK:       false,
+			Status:   status,
+			Protocol: resp.Protocol,
+			FinalURL: resp.FinalURL,
+			Error:    err.Error(),
 		})
 		return
 	}
@@ -363,10 +370,13 @@ func handleFetch(c *gin.Context, client fastls.Fastls) {
 
 	// 返回成功响应
 	c.JSON(http.StatusOK, FetchResponse{
-		OK:      true,
-		Status:  resp.Status,
-		Headers: resp.Headers,
-		Body:    decodedBody,
+		OK:       true,
+		Status:   resp.Status,
+		Protocol: resp.Protocol,
+		FinalURL: resp.FinalURL,
+		Headers:  resp.Headers,
+		Trailers: resp.Trailer.Clone(),
+		Body:     decodedBody,
 	})
 }
 

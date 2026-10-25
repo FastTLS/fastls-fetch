@@ -36,6 +36,11 @@ func TestFetchContractAgainstLocalTarget(t *testing.T) {
 			http.Redirect(w, r, "/final", http.StatusFound)
 		case "/final":
 			_, _ = io.WriteString(w, "redirected")
+		case "/metadata":
+			_, _ = io.ReadAll(r.Body)
+			w.Header().Set("Trailer", "X-Response-Trailer")
+			_, _ = io.WriteString(w, r.Trailer.Get("X-Request-Trailer"))
+			w.Header().Set("X-Response-Trailer", "response-value")
 		default:
 			http.NotFound(w, r)
 		}
@@ -62,6 +67,16 @@ func TestFetchContractAgainstLocalTarget(t *testing.T) {
 	}, nil)
 	if status != http.StatusOK || !response.OK || response.Status != http.StatusFound {
 		t.Fatalf("redirect was not disabled: status=%d response=%+v", status, response)
+	}
+
+	response, status = runFetch(t, context.Background(), FetchRequest{
+		URL: target.URL + "/metadata", Method: http.MethodPost, Body: "payload",
+		Trailers: http.Header{"X-Request-Trailer": {"request-value"}},
+	}, nil)
+	if status != http.StatusOK || !response.OK || response.Body != "request-value" ||
+		response.Protocol != "HTTP/1.1" || response.FinalURL != target.URL+"/metadata" ||
+		response.Trailers.Get("X-Response-Trailer") != "response-value" {
+		t.Fatalf("unexpected metadata response: status=%d response=%+v", status, response)
 	}
 }
 

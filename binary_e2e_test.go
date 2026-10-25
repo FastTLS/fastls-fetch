@@ -72,7 +72,10 @@ func buildTestBinary(t testing.TB, packagePath, name string) string {
 	}
 	path := filepath.Join(t.TempDir(), name)
 	command := exec.Command("go", "build", "-trimpath", "-o", path, packagePath)
-	command.Env = append(os.Environ(), "GOWORK=off")
+	command.Env = os.Environ()
+	if os.Getenv("GOWORK") == "" {
+		command.Env = append(command.Env, "GOWORK=off")
+	}
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("build test binary: %v\n%s", err, output)
 	}

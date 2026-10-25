@@ -9,7 +9,7 @@
 - `POST /fetch`：发起 HTTP/HTTPS 请求
 - `GET /health`：服务健康检查
 - 浏览器预设、JA3、JA4R 指纹配置
-- 请求级代理、重定向、超时、Cookie 和 User-Agent 控制
+- 请求级代理、重定向、超时、Cookie、User-Agent 和请求 Trailer 控制
 - 自动响应解压和 CORS
 - SIGINT/SIGTERM 安全停止，给活动 HTTP 请求最多 5 秒完成，超时后强制关闭
 - 基于 `fastls` + `ftransport` 的独立依赖链，不再依赖 `fhttp`
@@ -53,7 +53,7 @@ curl -X POST http://127.0.0.1:8800/fetch \
   }'
 ```
 
-成功响应包含 `ok`、`status`、`headers` 和 `body`；参数或上游请求错误通过 HTTP 状态码以及 `error` 字段返回。完整字段、错误和多语言示例见 [Fetch API 文档](./fetch_server_example.md) 与 [客户端示例](./example/README.md)。
+成功响应包含 `ok`、`status`、`protocol`、`final_url`、`headers`、`trailers` 和 `body`；`trailers` 在响应体读取完成后返回并保留多值。参数或上游请求错误通过 HTTP 状态码以及 `error` 字段返回。完整字段、错误和多语言示例见 [Fetch API 文档](./fetch_server_example.md) 与 [客户端示例](./example/README.md)。
 
 ## 指纹选择
 
@@ -89,7 +89,7 @@ go build ./...
 
 GitHub Actions 覆盖 Windows、Linux、macOS 与两个 Go 版本，并执行依赖策略、单元/集成测试、竞态检测、覆盖率、静态检查、全包构建和 CLI 冒烟测试。`main` 分支还会构建六个开发目标，生成 SHA-256 校验和和 Sigstore/GitHub 来源证明，并在上传前再次验证证明。
 
-集成测试全部使用环回地址，覆盖请求体/请求头/Cookie、压缩响应、禁用重定向、两级代理优先级、调用取消、CORS 预检和请求大小边界，不依赖公网服务。
+集成测试全部使用环回地址，覆盖请求体/请求头/Cookie、请求与响应 Trailer、最终协议/URL、压缩响应、禁用重定向、两级代理优先级、调用取消、CORS 预检和请求大小边界，不依赖公网服务。
 
 测试套件还会现场构建并启动 `fastls-fetch`，通过真实 TCP 端口验证 `/health` 和 `/fetch`，避免只有进程内路由测试通过而 CLI 无法运行。
 
