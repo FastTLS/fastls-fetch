@@ -31,6 +31,8 @@ go tool cover -func=coverage.out
 
 HTTP 入口变更必须覆盖 CORS 预检、凭据请求的显式来源响应以及 4 MiB 请求体边界。不得恢复 `Access-Control-Allow-Origin: *` 与凭据同时启用的无效组合。
 
+`binary_e2e_test.go` 会构建并启动当前源码对应的 CLI，通过真实 TCP 端口验证 `/health` 与 `/fetch`。不得用进程内路由测试替代这组黑盒门禁。
+
 ## CI 门禁
 
 `.github/workflows/ci.yml` 包含三组门禁：

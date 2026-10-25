@@ -91,6 +91,8 @@ GitHub Actions 覆盖 Windows、Linux、macOS 与两个 Go 版本，并执行依
 
 集成测试全部使用环回地址，覆盖请求体/请求头/Cookie、压缩响应、禁用重定向、两级代理优先级、调用取消、CORS 预检和请求大小边界，不依赖公网服务。
 
+测试套件还会现场构建并启动 `fastls-fetch`，通过真实 TCP 端口验证 `/health` 和 `/fetch`，避免只有进程内路由测试通过而 CLI 无法运行。
+
 - [开发与贡献说明](./DEVELOPMENT.md)
 - [开发产物及签发验证](./ARTIFACTS.md)
 
