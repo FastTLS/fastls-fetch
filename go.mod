@@ -3,7 +3,7 @@ module github.com/FastTLS/fastls-fetch
 go 1.26.0
 
 require (
-	github.com/FastTLS/fastls v0.1.0
+	github.com/FastTLS/fastls v0.1.1
 	github.com/FastTLS/imitate v0.1.0
 	github.com/gin-gonic/gin v1.11.0
 )
