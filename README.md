@@ -60,6 +60,8 @@ curl -X POST http://127.0.0.1:8800/fetch \
 
 请求中的优先级为：显式 `fingerprint`（JA3/JA4R）高于 `browser`，均未设置时使用默认浏览器配置。无法解析的指纹或浏览器选择器会返回错误，不会静默伪装为另一个版本。
 
+请求体也支持 `http2_settings_string` 和 `parent_proxy`。代理按 `X-Mitm-Proxy` > `parent_proxy` > `proxy` 取值；显式 HTTP/2 设置覆盖浏览器预设；调用方取消 `/fetch` 请求时，下游请求也会同步取消。
+
 ## 依赖关系
 
 ```text
@@ -85,6 +87,8 @@ go build ./...
 ```
 
 GitHub Actions 覆盖 Windows、Linux、macOS 与两个 Go 版本，并执行依赖策略、单元/集成测试、竞态检测、覆盖率、静态检查、全包构建和 CLI 冒烟测试。`main` 分支还会构建六个开发目标，生成 SHA-256 校验和和 Sigstore/GitHub 来源证明，并在上传前再次验证证明。
+
+集成测试全部使用环回地址，覆盖请求体/请求头/Cookie、压缩响应、禁用重定向、两级代理优先级和调用取消，不依赖公网服务。
 
 - [开发与贡献说明](./DEVELOPMENT.md)
 - [开发产物及签发验证](./ARTIFACTS.md)

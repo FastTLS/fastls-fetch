@@ -15,17 +15,19 @@ import (
 
 // FetchRequest 请求结构体
 type FetchRequest struct {
-	URL             string            `json:"url" binding:"required"`
-	Method          string            `json:"method"`
-	Headers         map[string]string `json:"headers"`
-	Body            string            `json:"body"`
-	Proxy           string            `json:"proxy"`
-	Timeout         int               `json:"timeout"`
-	DisableRedirect bool              `json:"disableRedirect"`
-	UserAgent       string            `json:"userAgent"`
-	Fingerprint     map[string]string `json:"fingerprint"` // {"type": "ja3", "value": "..."} 或 {"type": "ja4r", "value": "..."}
-	Browser         string            `json:"browser"`     // chrome/chrome160, chrome150..160, chrome120/142, edge/edge160, edge150..160, firefox/firefox158, firefox151..158, safari, opera
-	Cookies         []fastls.Cookie   `json:"cookies"`
+	URL                 string            `json:"url" binding:"required"`
+	Method              string            `json:"method"`
+	Headers             map[string]string `json:"headers"`
+	Body                string            `json:"body"`
+	Proxy               string            `json:"proxy"`
+	Timeout             int               `json:"timeout"`
+	DisableRedirect     bool              `json:"disableRedirect"`
+	UserAgent           string            `json:"userAgent"`
+	Fingerprint         map[string]string `json:"fingerprint"` // {"type": "ja3", "value": "..."} 或 {"type": "ja4r", "value": "..."}
+	Browser             string            `json:"browser"`     // chrome/chrome160, chrome150..160, chrome120/142, edge/edge160, edge150..160, firefox/firefox158, firefox151..158, safari, opera
+	Cookies             []fastls.Cookie   `json:"cookies"`
+	HTTP2SettingsString string            `json:"http2_settings_string"`
+	ParentProxy         string            `json:"parent_proxy"`
 }
 
 // FetchResponse 响应结构体
@@ -125,6 +127,10 @@ func handleFetch(c *gin.Context, client fastls.Fastls) {
 	if req.Method == "" {
 		req.Method = "GET"
 	}
+	if req.Timeout < 0 {
+		c.JSON(http.StatusBadRequest, FetchResponse{OK: false, Error: "timeout 不能为负数"})
+		return
+	}
 	if req.Timeout == 0 {
 		req.Timeout = 30 // 默认30秒超时
 	}
@@ -144,7 +150,11 @@ func handleFetch(c *gin.Context, client fastls.Fastls) {
 
 	// 解析请求头中的指纹配置（优先级最高）
 	requestConfig := parseFingerprintFromHeaders(c.Request.Header)
-	headerProxy, _ := parseProxyFromHeaders(c.Request.Header)
+	headerProxy, err := parseProxyFromHeaders(c.Request.Header)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, FetchResponse{OK: false, Error: "代理配置错误: " + err.Error()})
+		return
+	}
 
 	// 先复制用户的请求头到options（排除 X-Mitm-* 头）
 	for key, value := range req.Headers {
@@ -156,6 +166,8 @@ func handleFetch(c *gin.Context, client fastls.Fastls) {
 	// 优先使用请求头中的代理信息
 	if headerProxy != nil {
 		options.Proxy = headerProxy.String()
+	} else if req.ParentProxy != "" {
+		options.Proxy = req.ParentProxy
 	} else if req.Proxy != "" {
 		options.Proxy = req.Proxy
 	}
@@ -166,55 +178,48 @@ func handleFetch(c *gin.Context, client fastls.Fastls) {
 			c.JSON(http.StatusBadRequest, FetchResponse{OK: false, Error: "浏览器指纹配置错误: " + err.Error()})
 			return
 		}
+		if (options.Fingerprint == nil || options.Fingerprint.IsEmpty()) && options.Profile == nil {
+			if err := applyBrowserImitate(&options, "firefox"); err != nil {
+				c.JSON(http.StatusInternalServerError, FetchResponse{OK: false, Error: "默认浏览器指纹不可用: " + err.Error()})
+				return
+			}
+		}
 
 		// 优先使用请求头中的 HTTP2SettingsString，如果存在则覆盖
 		if requestConfig.HTTP2SettingsString != "" {
 			options.HTTP2SettingsString = requestConfig.HTTP2SettingsString
 		}
-
-		// 如果 HTTP2SettingsString 不为空，则解析并覆盖 HTTP2Settings 和 PHeaderOrderKeys
-		if options.HTTP2SettingsString != "" {
-			h2Settings, pHeaderOrderKeys, err := fastls.ParseH2SettingsStringWithPHeaderOrder(options.HTTP2SettingsString)
-			if err != nil {
-				log.Printf("解析 HTTP2SettingsString 失败: %v", err)
-			} else {
-				// 覆盖 HTTP2Settings
-				options.HTTP2Settings = fastls.ToHTTP2Settings(h2Settings)
-				// 如果解析出 PHeaderOrderKeys，则覆盖
-				if len(pHeaderOrderKeys) > 0 {
-					options.PHeaderOrderKeys = pHeaderOrderKeys
-				}
-			}
-		}
 	} else {
 		// 处理请求体中的指纹配置（优先级：fingerprint > browser > 默认Firefox）
+		bodyConfig := &RequestFingerprintConfig{
+			Browser:             req.Browser,
+			HTTP2SettingsString: req.HTTP2SettingsString,
+		}
 		if req.Fingerprint != nil {
 			fpType, hasType := req.Fingerprint["type"]
 			fpValue, hasValue := req.Fingerprint["value"]
-			if hasType && hasValue {
-				switch fpType {
-				case "ja3":
-					options.Fingerprint = fastls.Ja3Fingerprint{
-						FingerprintValue: fpValue,
-					}
-				case "ja4", "ja4r":
-					options.Fingerprint = fastls.Ja4Fingerprint{
-						FingerprintValue: fpValue,
-					}
-				}
+			if !hasType || !hasValue || fpType == "" || fpValue == "" {
+				c.JSON(http.StatusBadRequest, FetchResponse{OK: false, Error: "指纹配置必须同时包含 type 和 value"})
+				return
+			}
+			switch fpType {
+			case "ja3":
+				bodyConfig.JA3 = fpValue
+			case "ja4", "ja4r":
+				bodyConfig.JA4R = fpValue
+			default:
+				c.JSON(http.StatusBadRequest, FetchResponse{OK: false, Error: "不支持的指纹类型: " + fpType})
+				return
 			}
 		}
+		bodyConfig.Override = bodyConfig.Browser != "" || bodyConfig.JA3 != "" || bodyConfig.JA4R != "" || bodyConfig.HTTP2SettingsString != ""
 
-		// 如果没有指定指纹，根据浏览器类型设置指纹
-		if (options.Fingerprint == nil || options.Fingerprint.IsEmpty()) && req.Browser != "" {
-			if err := applyBrowserImitate(&options, req.Browser); err != nil {
+		if bodyConfig.Override {
+			if err := applyImitateConfig(&options, bodyConfig); err != nil {
 				c.JSON(http.StatusBadRequest, FetchResponse{OK: false, Error: "浏览器指纹配置错误: " + err.Error()})
 				return
 			}
-		} else if req.UserAgent != "" {
-			// 如果没有设置 Browser，使用用户提供的 UserAgent
-			options.UserAgent = req.UserAgent
-			options.Headers["User-Agent"] = req.UserAgent
+			options.HTTP2SettingsString = bodyConfig.HTTP2SettingsString
 		}
 
 		// 如果既没有指定指纹也没有指定浏览器，使用默认最新 Firefox
@@ -224,9 +229,25 @@ func handleFetch(c *gin.Context, client fastls.Fastls) {
 				return
 			}
 		}
+		// 浏览器配置会带入自身的 HTTP/2 设置；请求体中的显式值最后覆盖它。
+		if bodyConfig.HTTP2SettingsString != "" {
+			options.HTTP2SettingsString = bodyConfig.HTTP2SettingsString
+		}
+	}
+
+	// 显式 User-Agent 覆盖浏览器配置生成的默认值；headers 中的 User-Agent 仍具有最高优先级。
+	if req.UserAgent != "" {
+		options.UserAgent = req.UserAgent
+	}
+	if options.HTTP2SettingsString != "" {
+		if _, _, err := fastls.ParseH2SettingsStringWithPHeaderOrder(options.HTTP2SettingsString); err != nil {
+			c.JSON(http.StatusBadRequest, FetchResponse{OK: false, Error: "HTTP/2 设置错误: " + err.Error()})
+			return
+		}
 	}
 	// 执行请求
-	resp, err := client.Do(req.URL, options, req.Method)
+	resp, err := client.DoContext(c.Request.Context(), req.URL, options, req.Method)
+	defer resp.Client.CloseIdleConnections()
 
 	// 处理错误（在关闭Body之前检查）
 	if err != nil {

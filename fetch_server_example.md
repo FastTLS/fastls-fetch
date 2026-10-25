@@ -59,14 +59,18 @@ print(response.json())
 | headers | object | 否 | 请求头，键值对格式 |
 | body | string | 否 | 请求体（字符串格式） |
 | proxy | string | 否 | 代理地址，格式：http://host:port 或 socks5://host:port |
+| parent_proxy | string | 否 | 上级代理地址；设置后覆盖 `proxy` |
 | timeout | int | 否 | 超时时间（秒），默认30秒 |
 | disableRedirect | bool | 否 | 是否禁用重定向 |
 | userAgent | string | 否 | 自定义User-Agent |
 | fingerprint | object | 否 | 指纹配置，格式：`{"type": "ja3", "value": "..."}` 或 `{"type": "ja4r", "value": "..."}` |
 | browser | string | 否 | 浏览器类型：`chrome`/`chrome160`(最新), `chrome150`…`chrome160`, `chrome120`, `chrome142`, `chromium`, `edge`/`edge160`, `edge150`…`edge160`, `firefox`/`firefox158`, `firefox151`…`firefox158`, `safari`, `opera` |
 | cookies | array | 否 | Cookie数组 |
+| http2_settings_string | string | 否 | HTTP/2 SETTINGS、窗口及伪头顺序字符串；设置后覆盖浏览器预设值 |
 
 **注意：** 指纹设置的优先级：`fingerprint` > `browser` > 默认Firefox。如果同时指定了`fingerprint`和`browser`，将优先使用`fingerprint`。
+
+代理优先级为：HTTP 控制头 `X-Mitm-Proxy` > 请求体 `parent_proxy` > 请求体 `proxy`。指纹控制头存在时，整组控制头配置优先于请求体指纹配置。`fingerprint` 必须同时包含 `type` 和 `value`，不支持的类型以及无效的 HTTP/2 设置会直接返回 `400`。
 
 #### 响应格式
 
