@@ -4,6 +4,10 @@
 
 > 当前状态：`v0.1.0` 正式版。正式产物只在 GitHub Releases 发布；PyPI、npm、容器仓库等渠道不在发布范围内。
 
+[使用文档](https://fasttls.github.io/ecosystem/) · [下载发布包](https://github.com/FastTLS/fastls-fetch/releases)
+
+下载对应系统/架构的 Release 产物后校验 SHA-256 和来源证明，解压运行；普通用户无需安装 Go。只有从源码构建才需要下述 Go 工具链。
+
 ## 能力
 
 - `POST /fetch`：发起 HTTP/HTTPS 请求
@@ -26,7 +30,7 @@ git clone https://github.com/FastTLS/fastls-fetch.git
 cd fastls-fetch
 go mod download
 go build -o fastls-fetch .
-./fastls-fetch -addr :8800
+./fastls-fetch -addr 127.0.0.1:8800
 ```
 
 Windows 使用 `go build -o fastls-fetch.exe .` 和 `fastls-fetch.exe -addr :8800`。
@@ -106,3 +110,22 @@ GitHub Actions 覆盖 Windows、Linux、macOS 与两个 Go 版本，并执行依
 - [Python、Go、Node.js 客户端示例](./example/README.md)
 - [开发流程](./DEVELOPMENT.md)
 - [产物校验与来源证明](./ARTIFACTS.md)
+
+
+## 不支持与部署责任
+
+这是受控网络内的 HTTP 请求服务，不是完整浏览器、通用 VPN 或任意协议转发器。不能从核心的 HTTP/3 路径推断所有服务入口均支持 H3 指纹、代理组合或流式 RPC。默认示例不能替代认证、出口控制、租户隔离和流量限制。浏览器别名是服务适配层选择器，与 Go Provider 的规范 ID 不同；实际支持范围以该发布版本为准。
+
+## 详细文档与问题反馈
+
+- [使用文档](https://fasttls.github.io/ecosystem/)：安装、功能、参数与排错。
+- [版本与发布说明](https://github.com/FastTLS/fastls-fetch/releases)：正式版本、开发版本和产物边界。
+- [问题反馈](https://github.com/FastTLS/fastls-fetch/issues)：请提供版本、系统架构、脱敏后的最小示例与错误；不要提交凭据、Cookie、私钥或个人数据。
+
+## 开源协议与第三方声明
+
+FastTLS 自有代码采用 [Apache-2.0](LICENSE)，见 [NOTICE](NOTICE)。依赖及发布包内的第三方声明保留各自授权。
+
+## 使用边界与免责声明
+
+仅在拥有权限的系统、数据和网络上使用，并遵守适用法律、服务条款及隐私要求。软件按许可证约定以“现状”提供，不承诺可用性、特定用途适用性、第三方服务放行、匿名性或与真实浏览器完全一致。浏览器名称和版本用于描述配置，不表示获得相应厂商认证或背书。部署方负责访问控制、密钥和个人信息保护、请求限额及数据备份；担保排除与责任限制以随附许可证及适用法律为准。本说明不改变许可证授予的权利或新增许可限制。
