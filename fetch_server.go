@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -17,6 +18,8 @@ import (
 	"time"
 
 	fastls "github.com/FastTLS/fastls"
+	"github.com/FastTLS/fastls-fetch/internal/responsecontract"
+	"github.com/FastTLS/fastls-fetch/internal/servicepolicy"
 	"github.com/gin-gonic/gin"
 )
 
@@ -27,6 +30,7 @@ const (
 
 // FetchRequest 请求结构体
 type FetchRequest struct {
+	IncludeBodyBase64   bool              `json:"include_body_base64"`
 	URL                 string            `json:"url" binding:"required"`
 	Method              string            `json:"method"`
 	Headers             map[string]string `json:"headers"`
@@ -45,27 +49,39 @@ type FetchRequest struct {
 
 // FetchResponse 响应结构体
 type FetchResponse struct {
-	OK       bool              `json:"ok"`
-	Status   int               `json:"status"`
-	Protocol string            `json:"protocol,omitempty"`
-	FinalURL string            `json:"final_url,omitempty"`
-	Headers  map[string]string `json:"headers"`
-	Trailers http.Header       `json:"trailers,omitempty"`
-	Body     string            `json:"body"`
-	Error    string            `json:"error,omitempty"`
+	OK           bool              `json:"ok"`
+	Status       int               `json:"status"`
+	Protocol     string            `json:"protocol,omitempty"`
+	FinalURL     string            `json:"final_url,omitempty"`
+	Headers      map[string]string `json:"headers"`
+	Trailers     http.Header       `json:"trailers,omitempty"`
+	Body         string            `json:"body"`
+	Error        string            `json:"error,omitempty"`
+	HeaderValues http.Header       `json:"header_values,omitempty"`
+	BodyBase64   string            `json:"body_base64,omitempty"`
+	ErrorCode    string            `json:"error_code,omitempty"`
+	TimeoutPhase string            `json:"timeout_phase,omitempty"`
 }
 
 func main() {
 	var (
-		addr        string
-		debug       bool
-		showVersion bool
-		showHelp    bool
+		addr           string
+		debug          bool
+		showVersion    bool
+		showHelp       bool
+		maximum        int64
+		requestMaximum int64
+		inflight       int
+		policyFile     string
 	)
 
 	// 定义完整参数和缩写参数
 	flag.StringVar(&addr, "addr", ":8800", "监听地址 (例如: :8800 或 0.0.0.0:8800)")
 	flag.StringVar(&addr, "a", ":8800", "监听地址 (addr 的缩写)")
+	flag.Int64Var(&maximum, "max-response-bytes", 0, "Maximum wire and decoded response bytes; 0 is unlimited")
+	flag.Int64Var(&requestMaximum, "max-request-bytes", 4<<20, "Maximum complete JSON request bytes (1..64 MiB); 0 selects 4 MiB")
+	flag.IntVar(&inflight, "max-inflight", 0, "Maximum active fetch requests; 0 is unlimited")
+	flag.StringVar(&policyFile, "address-policy", "", "Trusted address policy JSON file; unsupported cores refuse startup")
 
 	flag.BoolVar(&debug, "debug", false, "启用 Debug 模式，显示详细的调试日志")
 	flag.BoolVar(&debug, "d", false, "启用 Debug 模式 (debug 的缩写)")
@@ -104,7 +120,10 @@ func main() {
 	} else {
 		gin.SetMode(gin.ReleaseMode)
 	}
-	r := newFetchRouter(client)
+	r, err := newFetchRouterWithConfig(client, fetchServerConfig{Limits: responsecontract.Limits{MaxRequestBytes: requestMaximum, MaxResponseBytes: maximum, MaxInflight: inflight}, AddressPolicyFile: policyFile})
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// 启动服务器
 	listener, err := net.Listen("tcp", addr)
@@ -123,16 +142,55 @@ func main() {
 }
 
 func newFetchRouter(client fastls.Fastls) *gin.Engine {
+	r, _ := newFetchRouterWithLimits(client, responsecontract.Limits{})
+	return r
+}
+
+func fetchMaximum(c *gin.Context) int64 {
+	value, _ := c.Get("response.maximum")
+	maximum, _ := value.(int64)
+	return maximum
+}
+
+func newFetchRouterWithLimits(client fastls.Fastls, limits responsecontract.Limits) (*gin.Engine, error) {
+	return newFetchRouterWithConfig(client, fetchServerConfig{Limits: limits})
+}
+
+type fetchServerConfig struct {
+	Limits            responsecontract.Limits
+	AddressPolicyFile string
+}
+
+func newFetchRouterWithConfig(client fastls.Fastls, config fetchServerConfig) (*gin.Engine, error) {
+	guard, err := responsecontract.NewGuard(config.Limits)
+	if err != nil {
+		return nil, err
+	}
+	client, err = servicepolicy.Load(client, config.AddressPolicyFile)
+	if err != nil {
+		return nil, err
+	}
 	r := gin.Default()
-	r.Use(requestBodyLimit(maxRequestBodySize))
 	r.Use(corsMiddleware())
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 	r.POST("/fetch", func(c *gin.Context) {
+		release, err := guard.Acquire(c.Request.Context())
+		if err != nil {
+			code, phase := responsecontract.Code(err, "overloaded")
+			c.JSON(http.StatusServiceUnavailable, FetchResponse{Error: err.Error(), ErrorCode: code, TimeoutPhase: phase})
+			return
+		}
+		defer release()
+		requestBodyLimit(guard.RequestMaximum())(c)
+		if c.IsAborted() {
+			return
+		}
+		c.Set("response.maximum", guard.Maximum())
 		handleFetch(c, client)
 	})
-	return r
+	return r, nil
 }
 
 func serveHTTP(ctx context.Context, listener net.Listener, handler http.Handler) error {
@@ -324,15 +382,17 @@ func handleFetch(c *gin.Context, client fastls.Fastls) {
 	// 处理错误（在关闭Body之前检查）
 	if err != nil {
 		status := resp.Status
+		code, phase := responsecontract.Code(err, "request_error")
 		if resp.Body != nil {
 			resp.Body.Close()
 		}
 		c.JSON(http.StatusOK, FetchResponse{
-			OK:       false,
-			Status:   status,
-			Protocol: resp.Protocol,
-			FinalURL: resp.FinalURL,
-			Error:    err.Error(),
+			OK:        false,
+			Status:    status,
+			Protocol:  resp.Protocol,
+			FinalURL:  resp.FinalURL,
+			Error:     responsecontract.ErrorMessage(err),
+			ErrorCode: code, TimeoutPhase: phase,
 		})
 		return
 	}
@@ -342,49 +402,54 @@ func handleFetch(c *gin.Context, client fastls.Fastls) {
 	}
 
 	// 读取响应体
-	bodyBytes, err := io.ReadAll(resp.Body)
+	wire, decodedBody, err := responsecontract.Read(resp.Body, http.Header(resp.HeaderValues), fetchMaximum(c))
 	if err != nil {
+		code, phase := responsecontract.Code(err, "read_error")
 		c.JSON(http.StatusOK, FetchResponse{
-			OK:     false,
-			Status: resp.Status,
-			Error:  "读取响应体失败: " + err.Error(),
+			OK:       false,
+			Status:   resp.Status,
+			Error:    "读取响应体失败: " + err.Error(),
+			Protocol: resp.Protocol, FinalURL: resp.FinalURL, Headers: resp.Headers, HeaderValues: http.Header(resp.HeaderValues).Clone(), ErrorCode: code, TimeoutPhase: phase,
 		})
 		return
 	}
 
-	// 解码响应体（处理gzip、br等压缩）
-	contentEncoding := resp.Headers["Content-Encoding"]
-	var decodedBody string
-	if contentEncoding != "" {
-		decodedBody = fastls.DecompressBody(bodyBytes, []string{contentEncoding}, nil)
-	} else {
-		// 如果没有Content-Encoding，检查Content-Type来决定是否需要base64编码
-		contentType := resp.Headers["Content-Type"]
-		if contentType != "" {
-			decodedBody = fastls.DecompressBody(bodyBytes, nil, []string{contentType})
-		} else {
-			decodedBody = string(bodyBytes)
-		}
+	bodyBase64 := ""
+	if req.IncludeBodyBase64 {
+		bodyBase64 = responsecontract.Base64(wire)
 	}
-
 	// 返回成功响应
 	c.JSON(http.StatusOK, FetchResponse{
-		OK:       true,
-		Status:   resp.Status,
-		Protocol: resp.Protocol,
-		FinalURL: resp.FinalURL,
-		Headers:  resp.Headers,
-		Trailers: resp.Trailer.Clone(),
-		Body:     decodedBody,
+		OK:           true,
+		Status:       resp.Status,
+		Protocol:     resp.Protocol,
+		FinalURL:     resp.FinalURL,
+		Headers:      resp.Headers,
+		Trailers:     resp.Trailer.Clone(),
+		Body:         decodedBody,
+		HeaderValues: http.Header(resp.HeaderValues).Clone(), BodyBase64: bodyBase64,
 	})
 }
 
 func requestBodyLimit(limit int64) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if c.Request.Body != nil {
-			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, limit)
+			body := http.MaxBytesReader(c.Writer, c.Request.Body, limit)
+			data, err := io.ReadAll(body)
+			body.Close()
+			if err != nil {
+				status, code := http.StatusBadRequest, "request_error"
+				message := err.Error()
+				var tooLarge *http.MaxBytesError
+				if errors.As(err, &tooLarge) {
+					status, code = http.StatusRequestEntityTooLarge, "request_too_large"
+					message = fmt.Sprintf("request body exceeds %d byte limit", tooLarge.Limit)
+				}
+				c.AbortWithStatusJSON(status, FetchResponse{Error: message, ErrorCode: code})
+				return
+			}
+			c.Request.Body = io.NopCloser(bytes.NewReader(data))
 		}
-		c.Next()
 	}
 }
 

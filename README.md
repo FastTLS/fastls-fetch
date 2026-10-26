@@ -4,7 +4,9 @@
 
 基于 HTTP 的 FastTLS Fetch 服务。它把 URL、请求头、Cookie、代理和 TLS 指纹配置转换为一次服务端 HTTP 请求，并以统一 JSON 结构返回结果。
 
-> 当前状态：`v0.1.0` 正式版。正式产物只在 GitHub Releases 发布；PyPI、npm、容器仓库等渠道不在发布范围内。
+> 当前状态：[`v0.1.0`](https://github.com/FastTLS/fastls-fetch/releases/tag/v0.1.0) 正式版。正式产物只在 GitHub Releases 发布；PyPI、npm、容器仓库等渠道不在发布范围内。
+
+当前开发分支新增完整多值响应头、原始正文Base64、错误分类和可选的响应字节/并发上限；用法与正式版差异见[响应契约说明](RESPONSE_CONTRACT.md)。这些变更尚未发布。
 
 [使用文档](https://fasttls.github.io/ecosystem/) · [下载发布包](https://github.com/FastTLS/fastls-fetch/releases)
 
@@ -21,6 +23,8 @@
 - 基于 `fastls` + `ftransport` 的独立依赖链，不再依赖 `fhttp`
 
 ## 环境要求
+
+开发源码另增加可信`-address-policy`启动选项，见[地址策略与核心能力检查](ADDRESS_POLICY.md)。当前公开核心v0.1.1不支持它，指定后拒绝启动；只有显式开发工作区链接的新核心可启用，不能将默认构建误认为已获得访问控制。
 
 - Go 1.26 或更高版本；CI 同时覆盖 Go 1.26.10 和 1.27.3
 - 使用仓库自己的 `go.mod`，建议设置 `GOWORK=off`
@@ -106,7 +110,7 @@ GitHub Actions 覆盖 Windows、Linux、macOS 与两个 Go 版本，并执行依
 
 ## 安全边界
 
-该服务允许调用方指定目标地址和代理。JSON 请求体内置 4 MiB 上限，浏览器跨域请求会显式回显 `Origin` 后再允许凭据。不要把未加访问控制的实例暴露到不受信任网络；部署方仍应加入认证、目标地址策略、网络出口限制、更严格的资源限制和审计。
+该服务允许调用方指定目标地址和代理。JSON 请求体默认 4 MiB 上限；开发源码可用`-max-request-bytes`设置1字节至64MiB（0选择默认值），完整正文包含尾部数据均计入。浏览器跨域请求会显式回显 `Origin` 后再允许凭据。不要把未加访问控制的实例暴露到不受信任网络；部署方仍应加入认证、目标地址策略、网络出口限制、更严格的资源限制和审计。
 
 ## 文档索引
 
