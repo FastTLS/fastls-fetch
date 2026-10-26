@@ -1,5 +1,7 @@
 # fastls-fetch
 
+[English documentation](https://fasttls.github.io/en/ecosystem/fastls-fetch)
+
 基于 HTTP 的 FastTLS Fetch 服务。它把 URL、请求头、Cookie、代理和 TLS 指纹配置转换为一次服务端 HTTP 请求，并以统一 JSON 结构返回结果。
 
 > 当前状态：`v0.1.0` 正式版。正式产物只在 GitHub Releases 发布；PyPI、npm、容器仓库等渠道不在发布范围内。
@@ -23,6 +25,8 @@
 - Go 1.26 或更高版本；CI 同时覆盖 Go 1.26.10 和 1.27.3
 - 使用仓库自己的 `go.mod`，建议设置 `GOWORK=off`
 
+默认 `-addr :8800` 监听所有可用接口，并非仅环回；下面示例显式使用 127.0.0.1。开放访问前需配置访问控制。
+
 ## 从源码运行
 
 ```bash
@@ -33,7 +37,7 @@ go build -o fastls-fetch .
 ./fastls-fetch -addr 127.0.0.1:8800
 ```
 
-Windows 使用 `go build -o fastls-fetch.exe .` 和 `fastls-fetch.exe -addr :8800`。
+Windows 使用 `go build -o fastls-fetch.exe .` 和 `fastls-fetch.exe -addr 127.0.0.1:8800`。
 
 可用命令：
 
@@ -72,7 +76,7 @@ curl -X POST http://127.0.0.1:8800/fetch \
 ```text
 fastls-fetch
   └─ fastls
-      ├─ ftransport       HTTP/1.1、HTTP/2、HTTP/3 传输
+      ├─ ftransport       HTTP/1.1、HTTP/2 传输（H3 为核心独立路径）
       ├─ fastls/profile   指纹模型
       └─ imitate          浏览器预设
 ```
