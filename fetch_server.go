@@ -18,6 +18,7 @@ import (
 	"time"
 
 	fastls "github.com/FastTLS/fastls"
+	"github.com/FastTLS/fastls-fetch/internal/ingress"
 	"github.com/FastTLS/fastls-fetch/internal/responsecontract"
 	"github.com/FastTLS/fastls-fetch/internal/servicepolicy"
 	"github.com/gin-gonic/gin"
@@ -73,6 +74,7 @@ func main() {
 		requestMaximum int64
 		inflight       int
 		policyFile     string
+		ingressConfig  ingress.HTTPConfig
 	)
 
 	// 定义完整参数和缩写参数
@@ -82,6 +84,7 @@ func main() {
 	flag.Int64Var(&requestMaximum, "max-request-bytes", 4<<20, "Maximum complete JSON request bytes (1..64 MiB); 0 selects 4 MiB")
 	flag.IntVar(&inflight, "max-inflight", 0, "Maximum active fetch requests; 0 is unlimited")
 	flag.StringVar(&policyFile, "address-policy", "", "Trusted address policy JSON file; unsupported cores refuse startup")
+	ingressConfig.BindFlags(flag.CommandLine)
 
 	flag.BoolVar(&debug, "debug", false, "启用 Debug 模式，显示详细的调试日志")
 	flag.BoolVar(&debug, "d", false, "启用 Debug 模式 (debug 的缩写)")
@@ -125,15 +128,24 @@ func main() {
 		log.Fatal(err)
 	}
 
+	server, err := ingress.NewHTTPServer(r, ingressConfig)
+	if err != nil {
+		log.Fatal(err)
+	}
 	// 启动服务器
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Fatalf("监听端口失败: %v", err)
 	}
+	limited, err := ingress.NewListener(listener, ingressConfig.MaxConnections)
+	if err != nil {
+		listener.Close()
+		log.Fatal(err)
+	}
 	shutdownContext, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
 	log.Printf("Fetch服务启动在端口 %s", listener.Addr())
-	if err := serveHTTP(shutdownContext, listener, r); err != nil {
+	if err := serveConfiguredHTTP(shutdownContext, limited, server, shutdownTimeout); err != nil {
 		log.Fatalf("服务器启动失败: %v", err)
 	}
 	if shutdownContext.Err() != nil {
@@ -198,18 +210,25 @@ func serveHTTP(ctx context.Context, listener net.Listener, handler http.Handler)
 }
 
 func serveHTTPWithTimeout(ctx context.Context, listener net.Listener, handler http.Handler, timeout time.Duration) error {
+	server, err := ingress.NewHTTPServer(handler, ingress.HTTPConfig{})
+	if err != nil {
+		return err
+	}
+	return serveConfiguredHTTP(ctx, listener, server, timeout)
+}
+
+func serveConfiguredHTTP(ctx context.Context, listener net.Listener, server *http.Server, timeout time.Duration) error {
 	if ctx == nil {
 		return errors.New("nil server context")
 	}
-	if listener == nil || handler == nil {
+	if listener == nil || server == nil {
 		return errors.New("nil HTTP handler or listener")
 	}
 	if timeout <= 0 {
 		return errors.New("shutdown timeout must be positive")
 	}
-	server := &http.Server{
-		Handler:           handler,
-		ReadHeaderTimeout: 10 * time.Second,
+	if closer, ok := listener.(interface{ CloseConnections() error }); ok {
+		defer closer.CloseConnections()
 	}
 	shutdownResult := make(chan error, 1)
 	stopCancellation := context.AfterFunc(ctx, func() {

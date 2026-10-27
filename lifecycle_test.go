@@ -11,8 +11,63 @@ import (
 	"time"
 
 	fastls "github.com/FastTLS/fastls"
+	"github.com/FastTLS/fastls-fetch/internal/ingress"
 	"github.com/gin-gonic/gin"
 )
+
+func TestFetchIngressShutdownClosesUnfinishedHeaders(t *testing.T) {
+	inner, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener, err := ingress.NewListener(inner, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.CloseConnections()
+	server, err := ingress.NewHTTPServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) }), ingress.HTTPConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	accepted := make(chan struct{}, 1)
+	server.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateNew {
+			accepted <- struct{}{}
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- serveConfiguredHTTP(ctx, listener, server, 50*time.Millisecond) }()
+	conn, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	io.WriteString(conn, "GET / HTTP/1.1\r\nHo")
+	select {
+	case <-accepted:
+	case <-time.After(time.Second):
+		t.Fatal("connection not accepted")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("forced cleanup must preserve shutdown deadline: %v", err)
+		}
+	case <-time.After(time.Second):
+		server.Close()
+		t.Fatal("unfinished headers prevented shutdown")
+	}
+	conn.SetReadDeadline(time.Now().Add(time.Second))
+	var data [1]byte
+	if _, err := conn.Read(data[:]); err == nil {
+		t.Fatal("connection still open")
+	} else if timeout, ok := err.(net.Error); ok && timeout.Timeout() {
+		t.Fatal("connection lease not closed")
+	}
+}
 
 func TestFetchHTTPServerStopsOnCancellation(t *testing.T) {
 	gin.SetMode(gin.TestMode)

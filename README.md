@@ -8,6 +8,8 @@
 
 当前开发分支新增完整多值响应头、原始正文Base64、错误分类和可选的响应字节/并发上限；用法与正式版差异见[响应契约说明](RESPONSE_CONTRACT.md)。这些变更尚未发布。
 
+S1 开发源码另有 [接入资源限额](INGRESS.md)：TCP 总名额、读取正文前的接收名额、头部预算及读取/空闲时限，均为可信启动配置，默认兼容现有行为。
+
 [使用文档](https://fasttls.github.io/ecosystem/) · [下载发布包](https://github.com/FastTLS/fastls-fetch/releases)
 
 下载对应系统/架构的 Release 产物后校验 SHA-256 和来源证明，解压运行；普通用户无需安装 Go。只有从源码构建才需要下述 Go 工具链。
