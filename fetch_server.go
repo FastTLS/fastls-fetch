@@ -407,7 +407,9 @@ func handleFetch(c *gin.Context, client fastls.Fastls) {
 		}
 	}
 	// 执行请求
-	resp, err := client.DoContext(c.Request.Context(), req.URL, options, req.Method)
+	requestContext, cancel := responsecontract.RequestContext(c.Request.Context(), options.Timeout)
+	defer cancel()
+	resp, err := client.DoContext(requestContext, req.URL, options, req.Method)
 	defer resp.Client.CloseIdleConnections()
 
 	// 处理错误（在关闭Body之前检查）
@@ -433,7 +435,7 @@ func handleFetch(c *gin.Context, client fastls.Fastls) {
 	}
 
 	// 读取响应体
-	wire, decodedBody, err := responsecontract.Read(resp.Body, http.Header(resp.HeaderValues), fetchMaximum(c))
+	wire, decodedBody, err := responsecontract.ReadContext(requestContext, resp.Body, http.Header(resp.HeaderValues), fetchMaximum(c))
 	if err != nil {
 		code, phase := responsecontract.Code(err, "read_error")
 		writeFetchResponse(c, http.StatusOK, FetchResponse{
