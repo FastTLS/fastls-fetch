@@ -337,7 +337,6 @@ func handleFetch(c *gin.Context, client fastls.Fastls) {
 		return
 	}
 
-	// 确保响应体被关闭
 	if resp.Body != nil {
 		defer resp.Body.Close()
 	}
