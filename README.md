@@ -4,9 +4,9 @@
 
 基于 HTTP 的 FastTLS Fetch 服务。它把 URL、请求头、Cookie、代理和 TLS 指纹配置转换为一次服务端 HTTP 请求，并以统一 JSON 结构返回结果。
 
-> 当前状态：[`v0.1.0`](https://github.com/FastTLS/fastls-fetch/releases/tag/v0.1.0) 正式版。正式产物只在 GitHub Releases 发布；PyPI、npm、容器仓库等渠道不在发布范围内。
+> 当前状态：[`v0.1.2`](https://github.com/FastTLS/fastls-fetch/releases/tag/v0.1.2) 正式版。正式产物只在 GitHub Releases 发布；PyPI、npm、容器仓库等渠道不在发布范围内。
 
-当前开发分支新增完整多值响应头、原始正文Base64、错误分类和可选的响应字节/并发上限；用法与正式版差异见[响应契约说明](RESPONSE_CONTRACT.md)。这些变更尚未发布。
+本版本提供完整多值响应头、原始正文 Base64、错误分类和可选响应字节/并发上限，见[响应契约](RESPONSE_CONTRACT.md)。
 
 S1 开发源码另有 [接入资源限额](INGRESS.md)：TCP 总名额、读取正文前的接收名额、头部预算及读取/空闲时限，均为可信启动配置，默认兼容现有行为。
 
@@ -26,7 +26,7 @@ S1 开发源码另有 [接入资源限额](INGRESS.md)：TCP 总名额、读取�
 
 ## 环境要求
 
-开发源码另增加可信`-address-policy`启动选项，见[地址策略与核心能力检查](ADDRESS_POLICY.md)。当前公开核心v0.1.1不支持它，指定后拒绝启动；只有显式开发工作区链接的新核心可启用，不能将默认构建误认为已获得访问控制。
+v0.1.2 的独立发行二进制支持可信 `-address-policy` 启动配置，并拒绝未指定目标地址，见[地址策略与升级](ADDRESS_POLICY.md)。策略默认关闭，旧二进制需显式升级。
 
 - Go 1.26 或更高版本；CI 同时覆盖 Go 1.26.10 和 1.27.3
 - 使用仓库自己的 `go.mod`，建议设置 `GOWORK=off`
@@ -101,7 +101,7 @@ go vet ./...
 go build ./...
 ```
 
-GitHub Actions 覆盖 Windows、Linux、macOS 与两个 Go 版本，并执行依赖策略、单元/集成测试、竞态检测、覆盖率、静态检查、全包构建和 CLI 冒烟测试。`main` 分支生成保留 14 天的开发产物；`v*` 标签会用同一受审流程生成六个平台正式包、SHA-256 校验和和 Sigstore/GitHub 来源证明，并只发布到 GitHub Releases。
+GitHub Actions 覆盖 Windows、Linux、macOS 与两个 Go 版本，并执行依赖策略、单元/集成测试、竞态检测、覆盖率、静态检查、全包构建和 CLI 冒烟测试。手动工作流生成保留 14 天的开发产物；`v*` 标签会用同一受审流程生成六个平台正式包、SHA-256 校验和和 Sigstore/GitHub 来源证明，并只发布到 GitHub Releases。
 
 集成测试全部使用环回地址，覆盖请求体/请求头/Cookie、请求与响应 Trailer、最终协议/URL、压缩响应、禁用重定向、两级代理优先级、调用取消、CORS 预检和请求大小边界，不依赖公网服务。
 
@@ -143,3 +143,5 @@ FastTLS 自有代码采用 [Apache-2.0](LICENSE)，见 [NOTICE](NOTICE)。依赖
 ## Development audit
 
 [Optional audit events and limits](AUDIT.md): disabled by default, with fixed redacted fields and bounded drain. This is a development candidate.
+
+发行构建先核对同一完整提交在 main 的成功 CI；RPC 同时要求完整服务联调成功。缺失、失败、取消或未获准跳过均阻止构建。main 保留常规验收，开发归档改为手动生成，正式标签只构建一次六平台发行字节；标签阶段复用精确候选证据，另验摘要、来源与真实安装。

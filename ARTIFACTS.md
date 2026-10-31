@@ -2,7 +2,7 @@
 
 ## 范围
 
-`Development artifacts` 工作流在 `main` 更新或手动触发时提供保留 14 天的联调构建；向 GitHub 推送 `v*` 标签时，同一工作流在全部校验通过后创建正式 GitHub Release。不会向 GitHub 以外的软件包或镜像仓库发布。
+`Development artifacts` 工作流在手动触发时提供保留 14 天的联调构建；向 GitHub 推送 `v*` 标签时，同一工作流在全部校验通过后创建正式 GitHub Release。不会向 GitHub 以外的软件包或镜像仓库发布。
 
 每次运行生成 Linux、Windows、macOS 的 amd64/arm64 包。开发归档名包含 `dev-<commit前12位>`，正式归档名包含版本标签；包内包含可执行文件和 `BUILD_INFO.txt`。
 
@@ -63,3 +63,5 @@ gh attestation verify fastls-fetch-dev-COMMIT-linux-amd64.tar.gz \
 4. 对所有归档计算 SHA-256。
 5. 通过 GitHub OIDC 与 Sigstore 为归档摘要生成 SLSA provenance。
 6. 使用限定仓库和工作流身份的命令验证证明，成功后才上传开发产物。
+
+发行构建先核对同一完整提交在 main 的成功 CI；RPC 同时要求完整服务联调成功。缺失、失败、取消或未获准跳过均阻止构建。main 保留常规验收，开发归档改为手动生成，正式标签只构建一次六平台发行字节；标签阶段复用精确候选证据，另验摘要、来源与真实安装。
