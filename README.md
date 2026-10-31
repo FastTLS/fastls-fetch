@@ -8,7 +8,7 @@
 
 本版本提供完整多值响应头、原始正文 Base64、错误分类和可选响应字节/并发上限，见[响应契约](RESPONSE_CONTRACT.md)。
 
-S1 开发源码另有 [接入资源限额](INGRESS.md)：TCP 总名额、读取正文前的接收名额、头部预算及读取/空闲时限，均为可信启动配置，默认兼容现有行为。
+v0.1.2 包含 [接入资源限额](INGRESS.md)：TCP 总名额、读取正文前的接收名额、头部预算及读取/空闲时限，均为可信启动配置，默认兼容现有行为。
 
 [使用文档](https://fasttls.github.io/ecosystem/) · [下载发布包](https://github.com/FastTLS/fastls-fetch/releases)
 
@@ -112,7 +112,7 @@ GitHub Actions 覆盖 Windows、Linux、macOS 与两个 Go 版本，并执行依
 
 ## 安全边界
 
-该服务允许调用方指定目标地址和代理。JSON 请求体默认 4 MiB 上限；开发源码可用`-max-request-bytes`设置1字节至64MiB（0选择默认值），完整正文包含尾部数据均计入。浏览器跨域请求会显式回显 `Origin` 后再允许凭据。不要把未加访问控制的实例暴露到不受信任网络；部署方仍应加入认证、目标地址策略、网络出口限制、更严格的资源限制和审计。
+该服务允许调用方指定目标地址和代理。JSON 请求体默认 4 MiB 上限；v0.1.2 可用`-max-request-bytes`设置1字节至64MiB（0选择默认值），完整正文包含尾部数据均计入。浏览器跨域请求会显式回显 `Origin` 后再允许凭据。不要把未加访问控制的实例暴露到不受信任网络；部署方仍应加入认证、目标地址策略、网络出口限制、更严格的资源限制和审计。
 
 ## 文档索引
 
@@ -140,8 +140,8 @@ FastTLS 自有代码采用 [Apache-2.0](LICENSE)，见 [NOTICE](NOTICE)。依赖
 
 仅在拥有权限的系统、数据和网络上使用，并遵守适用法律、服务条款及隐私要求。软件按许可证约定以“现状”提供，不承诺可用性、特定用途适用性、第三方服务放行、匿名性或与真实浏览器完全一致。浏览器名称和版本用于描述配置，不表示获得相应厂商认证或背书。部署方负责访问控制、密钥和个人信息保护、请求限额及数据备份；担保排除与责任限制以随附许可证及适用法律为准。本说明不改变许可证授予的权利或新增许可限制。
 
-## Development audit
+## Optional audit (released since v0.1.1)
 
-[Optional audit events and limits](AUDIT.md): disabled by default, with fixed redacted fields and bounded drain. This is a development candidate.
+[Optional audit events and limits](AUDIT.md): disabled by default, with fixed redacted fields and bounded drain. Available in service v0.1.1 and v0.1.2; auditing remains opt-in.
 
-发行构建先核对同一完整提交在 main 的成功 CI；RPC 同时要求完整服务联调成功。缺失、失败、取消或未获准跳过均阻止构建。main 保留常规验收，开发归档改为手动生成，正式标签只构建一次六平台发行字节；标签阶段复用精确候选证据，另验摘要、来源与真实安装。
+发行门禁接受同一完整提交的成功候选，或独立重新核验过的可信 main 祖先证明。复用要求源码、模块、生成输入、原生命令、工具链及平台配置一致，全部必需任务成功；未知差异、缺失、失败、取消和任意跳过均阻止签发。RPC 的跨仓契约单独检查固定引用、协议测试与执行配置，不随普通 Go 证明自动豁免。归档继续按实际生产提交构建、记录 vcs.revision 并签名，不将旧字节改标为新提交。main 不自动重复生成开发归档，正式标签每个平台只构建一次。
