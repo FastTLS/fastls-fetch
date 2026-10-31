@@ -3,10 +3,12 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/x509"
 	"errors"
 	"flag"
 	"fmt"
 	"github.com/FastTLS/fastls-fetch/internal/audit"
+	"github.com/FastTLS/fastls-fetch/internal/h3config"
 	"io"
 	"log"
 	"net"
@@ -32,6 +34,7 @@ const (
 
 // FetchRequest 请求结构体
 type FetchRequest struct {
+	HTTPVersion         string            `json:"http_version"`
 	IncludeBodyBase64   bool              `json:"include_body_base64"`
 	URL                 string            `json:"url" binding:"required"`
 	Method              string            `json:"method"`
@@ -75,6 +78,7 @@ func main() {
 		requestMaximum int64
 		inflight       int
 		policyFile     string
+		h3CAFile       string
 		auditConfig    audit.Config
 		ingressConfig  ingress.HTTPConfig
 	)
@@ -85,6 +89,7 @@ func main() {
 	flag.Int64Var(&maximum, "max-response-bytes", 0, "Maximum wire and decoded response bytes; 0 is unlimited")
 	flag.Int64Var(&requestMaximum, "max-request-bytes", 4<<20, "Maximum complete JSON request bytes (1..64 MiB); 0 selects 4 MiB")
 	flag.IntVar(&inflight, "max-inflight", 0, "Maximum active fetch requests; 0 is unlimited")
+	flag.StringVar(&h3CAFile, "h3-ca-file", "", "Trusted PEM roots for explicit H3 only; empty uses system roots")
 	flag.StringVar(&policyFile, "address-policy", "", "Trusted address policy JSON file; unsupported cores refuse startup")
 	ingressConfig.BindFlags(flag.CommandLine)
 	auditConfig.BindFlags(flag.CommandLine)
@@ -127,7 +132,7 @@ func main() {
 		} else {
 			gin.SetMode(gin.ReleaseMode)
 		}
-		r, err := newFetchRouterWithConfig(client, fetchServerConfig{Limits: responsecontract.Limits{MaxRequestBytes: requestMaximum, MaxResponseBytes: maximum, MaxInflight: inflight}, AddressPolicyFile: policyFile})
+		r, err := newFetchRouterWithConfig(client, fetchServerConfig{Limits: responsecontract.Limits{MaxRequestBytes: requestMaximum, MaxResponseBytes: maximum, MaxInflight: inflight}, AddressPolicyFile: policyFile, H3CAFile: h3CAFile})
 		if err != nil {
 			return err
 		}
@@ -181,6 +186,7 @@ func newFetchRouterWithLimits(client fastls.Fastls, limits responsecontract.Limi
 }
 
 type fetchServerConfig struct {
+	H3CAFile          string
 	Limits            responsecontract.Limits
 	AddressPolicyFile string
 }
@@ -191,6 +197,10 @@ func newFetchRouterWithConfig(client fastls.Fastls, config fetchServerConfig) (*
 		return nil, err
 	}
 	client, err = servicepolicy.Load(client, config.AddressPolicyFile)
+	if err != nil {
+		return nil, err
+	}
+	roots, err := h3config.LoadRoots(config.H3CAFile)
 	if err != nil {
 		return nil, err
 	}
@@ -212,6 +222,7 @@ func newFetchRouterWithConfig(client fastls.Fastls, config fetchServerConfig) (*
 			return
 		}
 		c.Set("response.maximum", guard.Maximum())
+		c.Set("h3.roots", roots)
 		handleFetch(c, client)
 	})
 	return r, nil
@@ -333,67 +344,83 @@ func handleFetch(c *gin.Context, client fastls.Fastls) {
 		options.Proxy = req.Proxy
 	}
 
-	// 优先使用请求头中的指纹配置
-	if requestConfig != nil && requestConfig.Override {
-		if err := applyImitateConfig(&options, requestConfig); err != nil {
-			writeFetchResponse(c, http.StatusBadRequest, FetchResponse{OK: false, Error: "浏览器指纹配置错误: " + err.Error()})
+	if req.HTTPVersion != "" {
+		value, _ := c.Get("h3.roots")
+		roots, _ := value.(*x509.CertPool)
+		conflict := req.Browser != "" || req.Fingerprint != nil || req.HTTP2SettingsString != "" || req.Proxy != "" || req.ParentProxy != "" || h3config.Controls(c.Request.Header)
+		for key := range req.Headers {
+			if strings.HasPrefix(strings.ToLower(key), "x-mitm-") {
+				conflict = true
+			}
+		}
+		if err := h3config.Apply(&options, req.HTTPVersion, req.URL, conflict, roots); err != nil {
+			writeFetchResponse(c, http.StatusBadRequest, FetchResponse{Error: err.Error(), ErrorCode: "invalid_request"})
 			return
 		}
-		if (options.Fingerprint == nil || options.Fingerprint.IsEmpty()) && options.Profile == nil {
-			if err := applyBrowserImitate(&options, "firefox"); err != nil {
-				writeFetchResponse(c, http.StatusInternalServerError, FetchResponse{OK: false, Error: "默认浏览器指纹不可用: " + err.Error()})
-				return
-			}
-		}
-
-		// 优先使用请求头中的 HTTP2SettingsString，如果存在则覆盖
-		if requestConfig.HTTP2SettingsString != "" {
-			options.HTTP2SettingsString = requestConfig.HTTP2SettingsString
-		}
 	} else {
-		// 处理请求体中的指纹配置（优先级：fingerprint > browser > 默认Firefox）
-		bodyConfig := &RequestFingerprintConfig{
-			Browser:             req.Browser,
-			HTTP2SettingsString: req.HTTP2SettingsString,
-		}
-		if req.Fingerprint != nil {
-			fpType, hasType := req.Fingerprint["type"]
-			fpValue, hasValue := req.Fingerprint["value"]
-			if !hasType || !hasValue || fpType == "" || fpValue == "" {
-				writeFetchResponse(c, http.StatusBadRequest, FetchResponse{OK: false, Error: "指纹配置必须同时包含 type 和 value"})
-				return
-			}
-			switch fpType {
-			case "ja3":
-				bodyConfig.JA3 = fpValue
-			case "ja4", "ja4r":
-				bodyConfig.JA4R = fpValue
-			default:
-				writeFetchResponse(c, http.StatusBadRequest, FetchResponse{OK: false, Error: "不支持的指纹类型: " + fpType})
-				return
-			}
-		}
-		bodyConfig.Override = bodyConfig.Browser != "" || bodyConfig.JA3 != "" || bodyConfig.JA4R != "" || bodyConfig.HTTP2SettingsString != ""
-
-		if bodyConfig.Override {
-			if err := applyImitateConfig(&options, bodyConfig); err != nil {
+		// 优先使用请求头中的指纹配置
+		if requestConfig != nil && requestConfig.Override {
+			if err := applyImitateConfig(&options, requestConfig); err != nil {
 				writeFetchResponse(c, http.StatusBadRequest, FetchResponse{OK: false, Error: "浏览器指纹配置错误: " + err.Error()})
 				return
 			}
-			options.HTTP2SettingsString = bodyConfig.HTTP2SettingsString
-		}
+			if (options.Fingerprint == nil || options.Fingerprint.IsEmpty()) && options.Profile == nil {
+				if err := applyBrowserImitate(&options, "firefox"); err != nil {
+					writeFetchResponse(c, http.StatusInternalServerError, FetchResponse{OK: false, Error: "默认浏览器指纹不可用: " + err.Error()})
+					return
+				}
+			}
 
-		// 如果既没有指定指纹也没有指定浏览器，使用默认最新 Firefox
-		if options.Fingerprint == nil || options.Fingerprint.IsEmpty() {
-			if err := applyBrowserImitate(&options, "firefox"); err != nil {
-				writeFetchResponse(c, http.StatusInternalServerError, FetchResponse{OK: false, Error: "默认浏览器指纹不可用: " + err.Error()})
-				return
+			// 优先使用请求头中的 HTTP2SettingsString，如果存在则覆盖
+			if requestConfig.HTTP2SettingsString != "" {
+				options.HTTP2SettingsString = requestConfig.HTTP2SettingsString
+			}
+		} else {
+			// 处理请求体中的指纹配置（优先级：fingerprint > browser > 默认Firefox）
+			bodyConfig := &RequestFingerprintConfig{
+				Browser:             req.Browser,
+				HTTP2SettingsString: req.HTTP2SettingsString,
+			}
+			if req.Fingerprint != nil {
+				fpType, hasType := req.Fingerprint["type"]
+				fpValue, hasValue := req.Fingerprint["value"]
+				if !hasType || !hasValue || fpType == "" || fpValue == "" {
+					writeFetchResponse(c, http.StatusBadRequest, FetchResponse{OK: false, Error: "指纹配置必须同时包含 type 和 value"})
+					return
+				}
+				switch fpType {
+				case "ja3":
+					bodyConfig.JA3 = fpValue
+				case "ja4", "ja4r":
+					bodyConfig.JA4R = fpValue
+				default:
+					writeFetchResponse(c, http.StatusBadRequest, FetchResponse{OK: false, Error: "不支持的指纹类型: " + fpType})
+					return
+				}
+			}
+			bodyConfig.Override = bodyConfig.Browser != "" || bodyConfig.JA3 != "" || bodyConfig.JA4R != "" || bodyConfig.HTTP2SettingsString != ""
+
+			if bodyConfig.Override {
+				if err := applyImitateConfig(&options, bodyConfig); err != nil {
+					writeFetchResponse(c, http.StatusBadRequest, FetchResponse{OK: false, Error: "浏览器指纹配置错误: " + err.Error()})
+					return
+				}
+				options.HTTP2SettingsString = bodyConfig.HTTP2SettingsString
+			}
+
+			// 如果既没有指定指纹也没有指定浏览器，使用默认最新 Firefox
+			if options.Fingerprint == nil || options.Fingerprint.IsEmpty() {
+				if err := applyBrowserImitate(&options, "firefox"); err != nil {
+					writeFetchResponse(c, http.StatusInternalServerError, FetchResponse{OK: false, Error: "默认浏览器指纹不可用: " + err.Error()})
+					return
+				}
+			}
+			// 浏览器配置会带入自身的 HTTP/2 设置；请求体中的显式值最后覆盖它。
+			if bodyConfig.HTTP2SettingsString != "" {
+				options.HTTP2SettingsString = bodyConfig.HTTP2SettingsString
 			}
 		}
-		// 浏览器配置会带入自身的 HTTP/2 设置；请求体中的显式值最后覆盖它。
-		if bodyConfig.HTTP2SettingsString != "" {
-			options.HTTP2SettingsString = bodyConfig.HTTP2SettingsString
-		}
+
 	}
 
 	// 显式 User-Agent 覆盖浏览器配置生成的默认值；headers 中的 User-Agent 仍具有最高优先级。

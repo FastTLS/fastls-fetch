@@ -4,7 +4,9 @@
 
 基于 HTTP 的 FastTLS Fetch 服务。它把 URL、请求头、Cookie、代理和 TLS 指纹配置转换为一次服务端 HTTP 请求，并以统一 JSON 结构返回结果。
 
-> 当前状态：[`v0.1.2`](https://github.com/FastTLS/fastls-fetch/releases/tag/v0.1.2) 正式版。正式产物只在 GitHub Releases 发布；PyPI、npm、容器仓库等渠道不在发布范围内。
+> 当前功能版本：`v0.2.0`；正式二进制以 [GitHub Releases](https://github.com/FastTLS/fastls-fetch/releases) 为准。正式产物只在 GitHub Releases 发布；PyPI、npm、容器仓库等渠道不在发布范围内。
+
+新增 [显式出站 H3](H3.md)：三入口统一 `http_version=h3`、证书校验、可信启动 CA 与地址策略组合；缺省 H1/H2 保持。gRPC 请求新增字段 16，其余字段不变。
 
 本版本提供完整多值响应头、原始正文 Base64、错误分类和可选响应字节/并发上限，见[响应契约](RESPONSE_CONTRACT.md)。
 
