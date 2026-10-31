@@ -1,10 +1,12 @@
 # fastls-fetch
 
+新增 [可选协作停机](SHUTDOWN.md)：`-shutdown-cancel-after` 在固定总期限内取消长请求并核实回收；默认关闭，强制退出仍报告失败。
+
 [English documentation](https://fasttls.github.io/en/ecosystem/fastls-fetch)
 
 基于 HTTP 的 FastTLS Fetch 服务。它把 URL、请求头、Cookie、代理和 TLS 指纹配置转换为一次服务端 HTTP 请求，并以统一 JSON 结构返回结果。
 
-> 当前功能版本：`v0.2.0`；正式二进制以 [GitHub Releases](https://github.com/FastTLS/fastls-fetch/releases) 为准。正式产物只在 GitHub Releases 发布；PyPI、npm、容器仓库等渠道不在发布范围内。
+> 当前功能版本：`v0.3.0`；正式二进制以 [GitHub Releases](https://github.com/FastTLS/fastls-fetch/releases) 为准。正式产物只在 GitHub Releases 发布；PyPI、npm、容器仓库等渠道不在发布范围内。
 
 新增 [显式出站 H3](H3.md)：三入口统一 `http_version=h3`、证书校验、可信启动 CA 与地址策略组合；缺省 H1/H2 保持。gRPC 请求新增字段 16，其余字段不变。
 

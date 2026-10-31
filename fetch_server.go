@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/FastTLS/fastls-fetch/internal/audit"
 	"github.com/FastTLS/fastls-fetch/internal/h3config"
+	"github.com/FastTLS/fastls-fetch/internal/shutdown"
 	"io"
 	"log"
 	"net"
@@ -80,6 +81,7 @@ func main() {
 		policyFile     string
 		h3CAFile       string
 		auditConfig    audit.Config
+		shutdownConfig shutdown.Config
 		ingressConfig  ingress.HTTPConfig
 	)
 
@@ -93,6 +95,7 @@ func main() {
 	flag.StringVar(&policyFile, "address-policy", "", "Trusted address policy JSON file; unsupported cores refuse startup")
 	ingressConfig.BindFlags(flag.CommandLine)
 	auditConfig.BindFlags(flag.CommandLine)
+	shutdownConfig.BindFlags(flag.CommandLine)
 
 	flag.BoolVar(&debug, "debug", false, "启用 Debug 模式，显示详细的调试日志")
 	flag.BoolVar(&debug, "d", false, "启用 Debug 模式 (debug 的缩写)")
@@ -120,7 +123,12 @@ func main() {
 	}
 
 	// 设置最大CPU核心数
-	if err := audit.Run(auditConfig, func(sink *audit.Sink) error {
+	owner, err := shutdown.New(shutdownConfig)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer owner.Close()
+	if err := audit.RunWithDeadline(auditConfig, func(sink *audit.Sink) error {
 		runtime.GOMAXPROCS(runtime.NumCPU())
 
 		// 初始化Fastls客户端（全局单例，支持高并发）
@@ -141,7 +149,7 @@ func main() {
 		if err != nil {
 			return err
 		}
-		server.Handler = sink.HTTP("fetch", server.Handler)
+		server.Handler = owner.HTTP(sink.HTTP("fetch", server.Handler))
 		// 启动服务器
 		listener, err := net.Listen("tcp", addr)
 		if err != nil {
@@ -158,14 +166,14 @@ func main() {
 		shutdownContext, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stopSignals()
 		log.Printf("Fetch服务启动在端口 %s", listener.Addr())
-		if err := serveConfiguredHTTP(shutdownContext, limited, server, shutdownTimeout); err != nil {
+		if err := serveConfiguredHTTP(shutdownContext, limited, server, shutdownTimeout, owner); err != nil {
 			return fmt.Errorf("服务器启动失败: %w", err)
 		}
 		if shutdownContext.Err() != nil {
 			log.Printf("Fetch服务已安全停止")
 		}
 		return nil
-	}); err != nil {
+	}, owner.Deadline); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -240,7 +248,7 @@ func serveHTTPWithTimeout(ctx context.Context, listener net.Listener, handler ht
 	return serveConfiguredHTTP(ctx, listener, server, timeout)
 }
 
-func serveConfiguredHTTP(ctx context.Context, listener net.Listener, server *http.Server, timeout time.Duration) error {
+func serveConfiguredHTTP(ctx context.Context, listener net.Listener, server *http.Server, timeout time.Duration, owners ...*shutdown.Controller) error {
 	if ctx == nil {
 		return errors.New("nil server context")
 	}
@@ -253,15 +261,24 @@ func serveConfiguredHTTP(ctx context.Context, listener net.Listener, server *htt
 	if closer, ok := listener.(interface{ CloseConnections() error }); ok {
 		defer closer.CloseConnections()
 	}
+	var owner *shutdown.Controller
+	if len(owners) > 0 {
+		owner = owners[0]
+	}
 	shutdownResult := make(chan error, 1)
 	stopCancellation := context.AfterFunc(ctx, func() {
-		shutdownContext, cancel := context.WithTimeout(context.Background(), timeout)
+		owner.Begin()
+		end := time.Now().Add(timeout)
+		if shared, ok := owner.Deadline(); ok {
+			end = shared
+		}
+		shutdownContext, cancel := context.WithDeadline(context.Background(), end)
 		defer cancel()
 		shutdownErr := server.Shutdown(shutdownContext)
 		if shutdownErr != nil {
 			shutdownErr = errors.Join(shutdownErr, server.Close())
 		}
-		shutdownResult <- shutdownErr
+		shutdownResult <- errors.Join(shutdownErr, owner.Wait(shutdownContext))
 	})
 	err := server.Serve(listener)
 	if errors.Is(err, http.ErrServerClosed) {
@@ -436,6 +453,11 @@ func handleFetch(c *gin.Context, client fastls.Fastls) {
 	// 执行请求
 	requestContext, cancel := responsecontract.RequestContext(c.Request.Context(), options.Timeout)
 	defer cancel()
+	if err := shutdown.Check(requestContext); err != nil {
+		code, phase := responsecontract.Code(err, "request_error")
+		writeFetchResponse(c, http.StatusOK, FetchResponse{Error: responsecontract.ErrorMessage(err), ErrorCode: code, TimeoutPhase: phase})
+		return
+	}
 	resp, err := client.DoContext(requestContext, req.URL, options, req.Method)
 	defer resp.Client.CloseIdleConnections()
 
@@ -505,7 +527,12 @@ func requestBodyLimit(limit int64) gin.HandlerFunc {
 					status, code = http.StatusRequestEntityTooLarge, "request_too_large"
 					message = fmt.Sprintf("request body exceeds %d byte limit", tooLarge.Limit)
 				}
-				c.AbortWithStatusJSON(status, FetchResponse{Error: message, ErrorCode: code})
+				phase := ""
+				if cause := c.Request.Context().Err(); cause != nil {
+					code, phase = responsecontract.Code(cause, code)
+				}
+				audit.Result(c.Request.Context(), "", 0, code, phase)
+				c.AbortWithStatusJSON(status, FetchResponse{Error: message, ErrorCode: code, TimeoutPhase: phase})
 				return
 			}
 			c.Request.Body = io.NopCloser(bytes.NewReader(data))
