@@ -121,7 +121,7 @@ func browserSelector(browserType string) string {
 	// firefox151–firefox158
 	if strings.HasPrefix(browserType, "firefox") && browserType != "firefox" {
 		if verStr := strings.TrimPrefix(browserType, "firefox"); verStr != "" {
-			if major, err := strconv.Atoi(verStr); err == nil && (major >= 151 && major <= 158 || major == 144 || major == 147 || major == 148) {
+			if major, err := strconv.Atoi(verStr); err == nil && (major >= 151 && major <= 160 || major == 144 || major == 147 || major == 148) {
 				selector = fmt.Sprintf("firefox/%d/windows", major)
 			}
 		}
